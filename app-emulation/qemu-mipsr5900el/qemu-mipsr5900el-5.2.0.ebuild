@@ -10,7 +10,9 @@ KEYWORDS="amd64 ppc64"
 IUSE="static-user"
 
 ALL_DEPEND="
+	dev-util/meson
 	>=dev-libs/glib-2.0[static-libs(+)]
+	sys-libs/liburing[static-libs(+)]
 	sys-libs/zlib[static-libs(+)]"
 
 RDEPEND=""
@@ -54,7 +56,6 @@ src_configure() {
 		--datadir=/usr/share
 		--docdir=/usr/share/doc/${PF}/html
 		--mandir=/usr/share/man
-		--with-confsuffix=/qemu
 		--localstatedir=/var
 		--disable-bsd-user
 		--disable-guest-agent
@@ -73,7 +74,6 @@ src_configure() {
 		echo "--disable-${2:-$1}"
 	}
 	conf_opts+=(
-		--disable-bluez
 		$(conf_notuser accessibility brlapi)
 		$(conf_notuser aio linux-aio)
 		$(conf_notuser bzip2)
