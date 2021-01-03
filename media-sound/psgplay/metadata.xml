@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "http://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+        <maintainer>
+                <email>noring@nocrew.org</email>
+                <name>Fredrik Noring</name>
+        </maintainer>
+        <use>
+                <flag name="alsa">Add support for media-libs/alsa-lib (Advanced Linux Sound Architecture)</flag>
+                <flag name="doc">Add extra documentation. It is recommended to enable per package instead of globally</flag>
+        </use>
+</pkgmetadata>
