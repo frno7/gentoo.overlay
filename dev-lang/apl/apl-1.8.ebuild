@@ -20,3 +20,6 @@ PATCHES=(
 	"${FILESDIR}/${P}-fix-long-double-overflow.patch"
 )
 
+src_configure() {
+	econf CXX_WERROR=no
+}
