@@ -1,0 +1,17 @@
+
+   
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE repositories SYSTEM "/dtd/repositories.dtd">
+<repositories xmlns="" version="1.0">
+  <repo quality="experimental" status="unofficial">
+    <name>frno7</name>
+    <description lang="en">Personal overlay</description>
+    <homepage>https://github.com/frno7/gentoo.overlay.git</homepage>
+    <owner type="person">
+      <email>noring@nocrew.org</email>
+      <name>Fredrik Noring</name>
+    </owner>
+    <source type="git">https://github.com/frno7/gentoo.overlay.git</source>
+    <feed>https://github.com/frno7/gentoo.overlay/commits/master.atom</feed>
+  </repo>
+</repositories>
