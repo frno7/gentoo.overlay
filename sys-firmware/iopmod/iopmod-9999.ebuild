@@ -1,5 +1,7 @@
 EAPI=7
 
+inherit toolchain-funcs
+
 DESCRIPTION="PlayStation 2 input/output processor (IOP) modules and tools"
 HOMEPAGE="https://github.com/frno7/iopmod"
 
@@ -17,7 +19,7 @@ fi
 
 LICENSE="GPL-2 MIT"
 SLOT="0"
-IUSE="static"
+IUSE="modules +tools static"
 
 RDEPEND=""
 DEPEND=""
@@ -34,11 +36,32 @@ src_compile() {
 
 	use static && LDFLAGS+=" -static"
 
-	emake LDFLAGS="${LDFLAGS}" V=1 tool || die
+	if use tools
+	then
+		emake CC="$(tc-getCC)" AR="$(tc-getAR)" \
+			LDFLAGS="${LDFLAGS}" V=1 tool || die
+	fi
+
+	if use modules
+	then
+		emake CC="$(tc-getBUILD_CC)" AR="$(tc-getBUILD_AR)" \
+			CCC="$(tc-getCC)" CLD="$(tc-getLD)" \
+			CFLAGS="-Wall -Iinclude" \
+			LDFLAGS="${LDFLAGS}" V=1 module || die
+	fi
 }
 
 src_install() {
-	dobin tool/iopmod-info
-	dobin tool/iopmod-link
-	dobin tool/iopmod-symc
+	if use tools
+	then
+		dobin tool/iopmod-info
+		dobin tool/iopmod-link
+		dobin tool/iopmod-symc
+	fi
+
+	if use modules
+	then
+		insinto /lib/firmware/ps2
+		doins module/*.irx
+	fi
 }
