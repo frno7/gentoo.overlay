@@ -8,7 +8,7 @@ HOMEPAGE="https://github.com/frno7/iopmod"
 if [[ ${PV} = *9999* ]]
 then
 	EGIT_REPO_URI="https://github.com/frno7/${PN}.git"
-	EGIT_BRANCH=master
+	EGIT_BRANCH=main
 	inherit git-r3
 	SRC_URI=""
 	KEYWORDS=""
