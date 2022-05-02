@@ -10,7 +10,9 @@ KEYWORDS="amd64 ppc64"
 IUSE="static-user"
 
 ALL_DEPEND="
+	dev-util/meson
 	>=dev-libs/glib-2.0[static-libs(+)]
+	sys-libs/liburing[static-libs(+)]
 	sys-libs/zlib[static-libs(+)]"
 
 RDEPEND=""
@@ -25,6 +27,9 @@ PATCHES=(
 	"${FILESDIR}/qemu-mipsr5900el-${PV}-linux-user-mips-Support-the-n32-ABI-for-the-R5900.patch"
 	"${FILESDIR}/qemu-mipsr5900el-${PV}-Revert-target-mips-Disable-R5900-support.patch"
 )
+
+DOC_CONTENTS="If you want to register binfmt handlers for QEMU user targets for OpenRC:
+        # rc-update add qemu-mipsr5900el-binfmt"
 
 handle_locales() {
 	# Cheap hack to disable gettext .mo generation.
@@ -54,7 +59,6 @@ src_configure() {
 		--datadir=/usr/share
 		--docdir=/usr/share/doc/${PF}/html
 		--mandir=/usr/share/man
-		--with-confsuffix=/qemu
 		--localstatedir=/var
 		--disable-bsd-user
 		--disable-guest-agent
@@ -73,7 +77,6 @@ src_configure() {
 		echo "--disable-${2:-$1}"
 	}
 	conf_opts+=(
-		--disable-bluez
 		$(conf_notuser accessibility brlapi)
 		$(conf_notuser aio linux-aio)
 		$(conf_notuser bzip2)
@@ -141,4 +144,6 @@ src_install() {
 	mv "${builddir}"/mipsel-linux-user/qemu-mipsel \
 	   "${builddir}"/mipsel-linux-user/qemu-mipsr5900el
 	dobin "${builddir}"/mipsel-linux-user/qemu-mipsr5900el
+
+	doinitd "${FILESDIR}"/qemu-mipsr5900el-binfmt
 }
