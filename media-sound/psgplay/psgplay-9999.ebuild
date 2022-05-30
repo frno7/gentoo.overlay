@@ -32,7 +32,7 @@ pkg_setup() {
 src_prepare() {
 	default
 
-	echo ${PV} >version
+	[[ ${PV} != *9999* ]] && echo ${PV} >version
 }
 
 src_compile() {
