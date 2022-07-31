@@ -1,5 +1,7 @@
 EAPI=7
 
+inherit toolchain-funcs
+
 DESCRIPTION="PSG play is a music player for Atari ST YM2149 SNDH files"
 HOMEPAGE="https://github.com/frno7/psgplay"
 
@@ -25,6 +27,8 @@ BDEPEND=""
 
 pkg_setup() {
 	MAKEOPTS+=" prefix=/usr libdir=/usr/$(get_libdir) V=1 "
+	MAKEOPTS+=" BUILD_CC='$(tc-getBUILD_CC)' "
+	MAKEOPTS+=" HOST_AR='$(tc-getAR)' HOST_CC='$(tc-getCC)' "
 
 	use alsa && MAKEOPTS+=" ALSA=1 "
 }
