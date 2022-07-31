@@ -20,11 +20,11 @@ IUSE="alsa doc"
 
 RDEPEND="
 	alsa? ( media-libs/alsa-lib )"
-DEPEND="${DEPEND}"
+DEPEND=""
 BDEPEND=""
 
 pkg_setup() {
-    MAKEOPTS+=" prefix=/usr "
+	MAKEOPTS+=" prefix=/usr libdir=/usr/$(get_libdir) V=1 "
 
 	use alsa && MAKEOPTS+=" ALSA=1 "
 }
@@ -35,39 +35,8 @@ src_prepare() {
 	[[ ${PV} != *9999* ]] && echo ${PV} >version
 }
 
-src_compile() {
-	emake SOFLAGS="-shared -Wl,-soname,libpsgplay.so.${PV%%.*}" || die
-
-	mv lib/psgplay/libpsgplay.so lib/psgplay/libpsgplay.so.${PV}
-
-	echo "prefix=/usr
-libdir=/usr/$(get_libdir)
-includedir=/usr/include
-
-Name: psgplay
-Description: PSG play is a music player for Atari ST YM2149 SNDH files
-Version: ${PV}
-
-Requires:"'
-Libs: -L${libdir} -lpsgplay
-Cflags: -I${includedir}' >libpsgplay.pc
-}
-
 src_install() {
-	dobin psgplay
+	emake DESTDIR="${D}" install || die
 
 	use doc && dodoc README.md
-
-	insinto /usr/$(get_libdir)/pkgconfig
-	doins libpsgplay.pc
-
-	into /usr
-	dolib.so lib/psgplay/libpsgplay.so.${PV}
-	dosym libpsgplay.so.${PV} /usr/$(get_libdir)/libpsgplay.so
-	dosym libpsgplay.so.${PV} /usr/$(get_libdir)/libpsgplay.so.${PV%%.*}
-
-	doman doc/psgplay.1
-
-	insinto /usr/include/psgplay
-	doins include/psgplay/*.h
 }

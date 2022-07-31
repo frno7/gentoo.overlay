@@ -1,1 +1,1 @@
-psgplay-9999.ebuild
+psgplay-0.3.ebuild
