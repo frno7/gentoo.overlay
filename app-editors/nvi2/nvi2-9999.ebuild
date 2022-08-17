@@ -1,6 +1,6 @@
-EAPI=7
+EAPI=8
 
-inherit cmake-utils
+inherit cmake
 
 DESCRIPTION="Reimplementation of the classic 4BSD ex/vi"
 HOMEPAGE="https://github.com/lichray/nvi2"
@@ -35,7 +35,7 @@ RDEPEND="${CDEPEND}
 "
 
 src_prepare() {
-	cmake-utils_src_prepare
+	cmake_src_prepare
 
 	sed -i '/add_compile_options(-fcolor-diagnostics)/d' CMakeLists.txt
 }
@@ -46,7 +46,7 @@ src_configure() {
 		-DUSE_WIDECHAR="$(usex widechar)"
 	)
 
-	cmake-utils_src_configure
+	cmake_src_configure
 }
 
 src_install() {
