@@ -45,7 +45,8 @@ src_compile() {
 	if use modules
 	then
 		emake CC="$(tc-getBUILD_CC)" AR="$(tc-getBUILD_AR)" \
-			CCC="$(tc-getCC)" CLD="$(tc-getLD)" \
+			TARGET_CC="$(tc-getCC)" TARGET_LD="$(tc-getLD)" \
+			TARGET_OBJCOPY="$(tc-getOBJCOPY)" \
 			CFLAGS="-Wall -Iinclude" \
 			LDFLAGS="${LDFLAGS}" V=1 module || die
 	fi
