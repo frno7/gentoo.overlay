@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+  <maintainer type="person">
+    <email>noring@nocrew.org</email>
+    <name>Fredrik Noring</name>
+  </maintainer>
+  <use>
+    <flag name="otb">
+      Install OpenType bitmap font (OTB)
+    </flag>
+    <flag name="otf">
+      Install OpenType scalable font (OTF)
+    </flag>
+  </use>
+</pkgmetadata>
