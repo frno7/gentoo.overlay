@@ -3,7 +3,7 @@ EAPI=7
 inherit font font-ebdftopcf
 
 DESCRIPTION="The system fonts of the Atari ST personal computer family"
-HOMEPAGE="https://github.com/frno7/font"
+HOMEPAGE="https://github.com/frno7/fonts"
 
 LICENSE="public-domain" # Bitmap fonts are not copyrightable
 SLOT="0"
@@ -12,10 +12,10 @@ IUSE="+otb otf"
 if [[ ${PV} = *9999* ]]
 then
 	inherit git-r3
-	EGIT_REPO_URI="https://github.com/frno7/font.git"
+	EGIT_REPO_URI="https://github.com/frno7/fonts.git"
 	BDEPEND="otf? ( media-gfx/fontforge media-fonts/bdf2sfd x11-apps/fonttosfnt )"
 else
-	SRC_URI="https://github.com/frno7/font/archive/v${PV}.tar.gz -> ${P}.tar.gz"
+	SRC_URI="https://github.com/frno7/fonts/archive/v${PV}.tar.gz -> ${P}.tar.gz"
 	KEYWORDS="amd64 arm arm64 m68k mips ppc ppc64 riscv s390 x86"
 	S=${WORKDIR}/${P}
 fi

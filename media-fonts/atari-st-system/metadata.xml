@@ -7,10 +7,10 @@
   </maintainer>
   <use>
     <flag name="otb">
-      Install OpenType bitmap font (OTB)
+      Install OpenType bitmap fonts (OTB)
     </flag>
     <flag name="otf">
-      Install OpenType scalable font (OTF)
+      Install OpenType scalable fonts (OTF)
     </flag>
   </use>
 </pkgmetadata>
