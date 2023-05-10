@@ -2,7 +2,7 @@ EAPI=7
 
 inherit font font-ebdftopcf
 
-DESCRIPTION="Spleen is a monospaced bitmap font"
+DESCRIPTION="Spleen is a monospaced bitmap font family"
 HOMEPAGE="https://github.com/fcambus/spleen"
 
 LICENSE="public-domain" # Bitmap fonts are not copyrightable
