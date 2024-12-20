@@ -24,7 +24,7 @@ BDEPEND="
 	app-arch/zip
 	dev-lang/perl
 	dev-python/cryptography
-	dev-python/PySocks
+	dev-python/pysocks
 	dev-python/pyyaml
 	dev-python/requests"
 
