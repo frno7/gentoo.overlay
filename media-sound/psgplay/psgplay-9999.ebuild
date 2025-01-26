@@ -12,7 +12,10 @@ then
 	SRC_URI=""
 	KEYWORDS=""
 else
-	SRC_URI="https://github.com/frno7/${PN}/archive/v${PV}.tar.gz -> ${P}.tar.gz"
+	EGIT_REPO_URI="https://github.com/frno7/${PN}.git"
+	EGIT_COMMIT="v${PV}"
+	inherit git-r3
+	SRC_URI=""
 	KEYWORDS="amd64 ppc64"
 fi
 
