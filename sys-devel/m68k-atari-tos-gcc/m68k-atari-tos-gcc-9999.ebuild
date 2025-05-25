@@ -35,10 +35,6 @@ pkg_setup() {
 	MAKEOPTS+=" DESTDIR=${D} "
 }
 
-src_prepare() {
-	default
-}
-
 src_compile() {
 	emake tool || die
 }

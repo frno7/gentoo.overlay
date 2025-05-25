@@ -24,18 +24,13 @@ SLOT="0"
 IUSE="example test"
 
 RDEPEND=""
-DEPEND="
-	cross-m68k-elf/gcc"
+DEPEND="cross-m68k-elf/gcc"
 BDEPEND=""
 
 pkg_setup() {
 	MAKEOPTS+=" prefix=/usr/m68k-atari-tos-gnu V=1 "
 	MAKEOPTS+=" TARGET_COMPILE=m68k-elf- "
 	MAKEOPTS+=" DESTDIR=${D} "
-}
-
-src_prepare() {
-	default
 }
 
 src_compile() {
