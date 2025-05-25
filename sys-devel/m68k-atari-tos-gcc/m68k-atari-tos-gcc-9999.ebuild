@@ -40,5 +40,5 @@ src_compile() {
 }
 
 src_install() {
-	emake DESTDIR="${D}" install-tool || die
+	emake install-tool || die
 }

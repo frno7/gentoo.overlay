@@ -41,7 +41,7 @@ src_compile() {
 }
 
 src_install() {
-	emake DESTDIR="${D}" install-lib || die
+	emake install-lib || die
 
 	use example && emake install-example
 	use test    && emake install-test
