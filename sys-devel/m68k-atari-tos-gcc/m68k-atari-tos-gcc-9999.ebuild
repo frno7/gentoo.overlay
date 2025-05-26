@@ -36,9 +36,15 @@ pkg_setup() {
 }
 
 src_compile() {
-	emake tool || die
+	emake compiler || die
 }
 
 src_install() {
-	emake install-tool || die
+	emake install-compiler || die
+
+	for f in "${D}"/usr/m68k-atari-tos-gnu/bin/*
+	do
+		b="$(basename $f)"
+		dosym /usr/m68k-atari-tos-gnu/bin/"$b" /usr/bin/"$b"
+	done
 }
