@@ -26,6 +26,7 @@ IUSE="example test"
 RDEPEND=""
 DEPEND="cross-m68k-elf/gcc"
 BDEPEND=""
+RESTRICT="strip"
 
 pkg_setup() {
 	MAKEOPTS+=" prefix=/usr/m68k-atari-tos-gnu V=1 "
