@@ -2,7 +2,7 @@ EAPI=8
 
 inherit toolchain-funcs
 
-DESCRIPTION="32-bit C compiler for Atari TOS"
+DESCRIPTION="32-bit assembler and linker tools for Atari TOS"
 HOMEPAGE="https://github.com/frno7/toslibc"
 
 if [[ ${PV} = *9999* ]]
@@ -24,10 +24,7 @@ SLOT="0"
 IUSE=""
 
 RDEPEND=""
-DEPEND="
-	cross-m68k-elf/gcc
-	sys-devel/m68k-atari-tos-gnu-binutils
-	sys-libs/toslibc"
+DEPEND="cross-m68k-elf/binutils"
 BDEPEND=""
 
 pkg_setup() {
@@ -37,11 +34,11 @@ pkg_setup() {
 }
 
 src_compile() {
-	emake compiler || die
+	emake binutils || die
 }
 
 src_install() {
-	emake install-compiler || die
+	emake install-binutils || die
 
 	for f in "${D}"/usr/m68k-atari-tos-gnu/bin/*
 	do
