@@ -51,3 +51,15 @@ src_install() {
 	insinto "${fw}"/fpga
 	doins "${DISTDIR}"/*.rom
 }
+
+pkg_postinst() {
+	elog "Review:"
+	elog
+	elog "https://wiki.raptorcs.com/wiki/Talos_II/Firmware#System_Package_v1.05"
+	elog "https://wiki.raptorcs.com/wiki/Updating_Firmware"
+	elog
+	elog "https://wiki.raptorcs.com/wiki/File:Talos_ii_openbmc_v1.05_bundle.tar.bz2"
+	elog "https://wiki.raptorcs.com/wiki/File:Talos_ii_host_pnor_v1.04.bin.bz2"
+	elog "https://wiki.raptorcs.com/wiki/File:Talos-system-fpga-v1.06.rom"
+	elog
+}

@@ -57,3 +57,16 @@ src_install() {
 	insinto "${fw}"/web
 	doins web_ipmi_upgrade/*
 }
+
+pkg_postinst() {
+	elog "Review:"
+	elog
+	elog "https://wiki.raptorcs.com/wiki/Talos_II/Firmware#System_Package_v2.00"
+	elog "https://wiki.raptorcs.com/wiki/Talos_II/Firmware/2.00/Release_Notes"
+	elog "https://wiki.raptorcs.com/wiki/Updating_Firmware"
+	elog
+	elog "https://wiki.raptorcs.com/wiki/File:Talos-ii-openbmc-v2.00-bundle.tar"
+	elog "https://wiki.raptorcs.com/wiki/File:Talos-ii-pnor-v2.00-bundle.tar"
+	elog "https://wiki.raptorcs.com/wiki/File:Talos-ii-system-fpga-v1.08.rom"
+	elog
+}
