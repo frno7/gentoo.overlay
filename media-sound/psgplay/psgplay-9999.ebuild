@@ -12,16 +12,18 @@ then
 	SRC_URI=""
 	KEYWORDS=""
 else
+	# Github archive (tar) download with EGIT_REPO_URI and EGIT_COMMIT
+	# does not have submodules, so clone repo instead.
 	EGIT_REPO_URI="https://github.com/frno7/${PN}.git"
 	EGIT_COMMIT="v${PV}"
 	inherit git-r3
 	SRC_URI=""
-	KEYWORDS="amd64 ppc64"
+	KEYWORDS="amd64 arm64 ppc64"
 fi
 
 LICENSE="GPL-2"
 SLOT="0"
-IUSE="alsa doc"
+IUSE="alsa"
 
 RDEPEND="
 	alsa? ( media-libs/alsa-lib )"
@@ -43,7 +45,7 @@ src_prepare() {
 }
 
 src_install() {
-	emake DESTDIR="${D}" install || die
+	emake DESTDIR="${D}" install
 
-	use doc && dodoc README.md
+	dodoc README.md
 }
