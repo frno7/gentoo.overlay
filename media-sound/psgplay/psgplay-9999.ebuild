@@ -23,7 +23,7 @@ fi
 
 LICENSE="GPL-2"
 SLOT="0"
-IUSE="alsa static"
+IUSE="alsa static-libs"
 
 RDEPEND="
 	alsa? ( media-libs/alsa-lib )"
@@ -36,8 +36,6 @@ pkg_setup() {
 	MAKEOPTS+=" HOST_AR='$(tc-getAR)' HOST_CC='$(tc-getCC)' "
 
 	use alsa && MAKEOPTS+=" ALSA=1 "
-
-	use static && MAKEOPTS+=" HOST_LDFLAGS=-static "
 }
 
 src_prepare() {
@@ -46,17 +44,11 @@ src_prepare() {
 	[[ ${PV} != *9999* ]] && echo ${PV} >version
 }
 
-src_compile() {
-	emake psgplay
-}
-
 src_install() {
-	INSTALL_LIB=" install-include install-pkg-config "
-	if use static
+	INSTALL_LIB=" install-include install-pkg-config install-lib-shared "
+	if use static-libs
 	then
 		INSTALL_LIB+=" install-lib-static "
-	else
-		INSTALL_LIB+=" install-lib-shared "
 	fi
 
 	emake DESTDIR="${D}" install-psgplay install-man ${INSTALL_LIB}
