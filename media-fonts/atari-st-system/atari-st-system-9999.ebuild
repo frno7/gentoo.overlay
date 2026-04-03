@@ -20,6 +20,10 @@ else
 	S=${WORKDIR}/${P}
 fi
 
+BDEPEND="
+	otb? ( x11-apps/fonttosfnt )
+"
+
 FONT_S="${S}/atari"
 
 RESTRICT="strip binchecks" # Only install fonts
