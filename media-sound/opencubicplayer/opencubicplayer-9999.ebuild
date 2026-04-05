@@ -87,4 +87,9 @@ src_configure() {
 
 src_install() {
 	emake DESTDIR=${D} install
+
+	# QA Notice: One or more compressed files were found in docompress-ed
+	# directories. Please fix the ebuild not to install compressed files
+	# (manpages, documentation) when automatic compression is used:
+	gzip -d ${D}/usr/share/info/ocp.info.gz
 }
