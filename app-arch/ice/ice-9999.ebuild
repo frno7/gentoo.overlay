@@ -13,7 +13,7 @@ then
 	KEYWORDS=""
 else
 	SRC_URI="https://github.com/frno7/pack-ice/archive/v${PV}.tar.gz -> ${P}.tar.gz"
-	KEYWORDS="amd64 ppc64"
+	KEYWORDS="amd64 arm64 ppc64"
 fi
 
 LICENSE="GPL-2"
