@@ -7,8 +7,7 @@ inherit toolchain-funcs multilib
 
 DESCRIPTION="old berk db kept around for really old packages"
 HOMEPAGE="http://www.oracle.com/technetwork/database/database-technologies/berkeleydb/overview/index.html"
-SRC_URI="http://download.oracle.com/berkeley-db/db.${PV}.tar.gz
-		 mirror://gentoo/${P}-r3.1.patch.bz2"
+SRC_URI="http://download.oracle.com/berkeley-db/db.${PV}.tar.gz"
 # The patch used by Gentoo is from Fedora, and includes all 5 patches found on
 # the Oracle page, plus others.
 
@@ -22,7 +21,7 @@ DEPEND=""
 S="${WORKDIR}/db.${PV}"
 
 PATCHES=(
-	"${WORKDIR}"/${P}-r3.1.patch
+	"${FILESDIR}"/${P}-r3.1.patch
 	"${FILESDIR}"/${P}-gentoo-paths.patch
 )
 
