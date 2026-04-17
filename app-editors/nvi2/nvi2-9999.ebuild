@@ -42,6 +42,7 @@ src_prepare() {
 
 src_configure() {
 	local mycmakeargs=(
+		-DCMAKE_C_FLAGS=-D_XOPEN_SOURCE=700
 		-DUSE_ICONV="$(usex iconv)"
 		-DUSE_WIDECHAR="$(usex widechar)"
 	)
