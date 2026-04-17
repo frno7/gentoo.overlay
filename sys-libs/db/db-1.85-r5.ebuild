@@ -35,7 +35,7 @@ src_prepare() {
 
 src_compile() {
 	tc-export CC AR RANLIB
-	emake -C PORT/linux OORG="${CFLAGS}"
+	emake -C PORT/linux OORG="${CFLAGS} -Wno-old-style-definition"
 }
 
 src_install() {

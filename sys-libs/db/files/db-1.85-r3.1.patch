@@ -1,760 +1,7 @@
-General cleanup patch taken from Fedora and further cleaned up to remove 
-things like hunks that only change whitespace
-
---- db.1.85/btree/bt_delete.c
-+++ db.1.85/btree/bt_delete.c
-@@ -418,7 +418,7 @@ __bt_pdelete(t, h)
- 		 * root page. If it's the rootpage, turn it back into an empty
- 		 * leaf page.
- 		 */
--		if (NEXTINDEX(pg) == 1)
-+		if (NEXTINDEX(pg) == 1) {
- 			if (pg->pgno == P_ROOT) {
- 				pg->lower = BTDATAOFF;
- 				pg->upper = t->bt_psize;
-@@ -428,7 +428,7 @@ __bt_pdelete(t, h)
- 					return (RET_ERROR);
- 				continue;
- 			}
--		else {
-+		} else {
- 			/* Pack remaining key items at the end of the page. */
- 			nksize = NBINTERNAL(bi->ksize);
- 			from = (char *)pg + pg->upper;
-@@ -571,7 +571,7 @@ __bt_curdel(t, key, h, index)
- 			key = &c->key;
- 		}
- 		/* Check previous key, if not at the beginning of the page. */
--		if (index > 0) { 
-+		if (index > 0) {
- 			e.page = h;
- 			e.index = index - 1;
- 			if (__bt_cmp(t, key, &e) == 0) {
---- db.1.85/btree/bt_open.c
-+++ db.1.85/btree/bt_open.c
-@@ -125,7 +125,7 @@ __bt_open(fname, flags, mode, openinfo, 
- 		 */
- 		if (b.psize &&
- 		    (b.psize < MINPSIZE || b.psize > MAX_PAGE_OFFSET + 1 ||
--		    b.psize & sizeof(indx_t) - 1))
-+		    b.psize & (sizeof(indx_t) - 1)))
- 			goto einval;
- 
- 		/* Minimum number of keys per page; absolute minimum is 2. */
-@@ -245,7 +245,7 @@ __bt_open(fname, flags, mode, openinfo, 
- 		if (m.magic != BTREEMAGIC || m.version != BTREEVERSION)
- 			goto eftype;
- 		if (m.psize < MINPSIZE || m.psize > MAX_PAGE_OFFSET + 1 ||
--		    m.psize & sizeof(indx_t) - 1)
-+		    m.psize & (sizeof(indx_t) - 1))
- 			goto eftype;
- 		if (m.flags & ~SAVEMETA)
- 			goto eftype;
-@@ -259,7 +259,9 @@ __bt_open(fname, flags, mode, openinfo, 
- 		 * Don't overflow the page offset type.
- 		 */
- 		if (b.psize == 0) {
-+#ifdef _STATBUF_ST_BLKSIZE
- 			b.psize = sb.st_blksize;
-+#endif
- 			if (b.psize < MINPSIZE)
- 				b.psize = MINPSIZE;
- 			if (b.psize > MAX_PAGE_OFFSET + 1)
-@@ -278,8 +280,8 @@ __bt_open(fname, flags, mode, openinfo, 
- 	t->bt_psize = b.psize;
- 
- 	/* Set the cache size; must be a multiple of the page size. */
--	if (b.cachesize && b.cachesize & b.psize - 1)
--		b.cachesize += (~b.cachesize & b.psize - 1) + 1;
-+	if (b.cachesize && b.cachesize & (b.psize - 1))
-+		b.cachesize += (~b.cachesize & (b.psize - 1)) + 1;
- 	if (b.cachesize < b.psize * MINCACHE)
- 		b.cachesize = b.psize * MINCACHE;
- 
-@@ -388,18 +390,30 @@ tmp()
- {
- 	sigset_t set, oset;
- 	int fd;
--	char *envtmp;
--	char path[MAXPATHLEN];
-+	const char *envtmp;
-+	char *path;
-+	static const char fmt[] = "%s/bt.XXXXXX";
-+	size_t n;
- 
- 	envtmp = getenv("TMPDIR");
--	(void)snprintf(path,
--	    sizeof(path), "%s/bt.XXXXXX", envtmp ? envtmp : "/tmp");
-+	if (!envtmp)
-+	  envtmp = "/tmp";
-+	n = strlen (envtmp) + sizeof fmt;
-+#ifdef	__GNUC__
-+	path = __builtin_alloca(n);
-+#else
-+	path = malloc(n);
-+#endif
-+	(void)snprintf(path, n, fmt, envtmp ? envtmp : "/tmp");
- 
- 	(void)sigfillset(&set);
- 	(void)sigprocmask(SIG_BLOCK, &set, &oset);
- 	if ((fd = mkstemp(path)) != -1)
- 		(void)unlink(path);
- 	(void)sigprocmask(SIG_SETMASK, &oset, NULL);
-+#ifndef	__GNUC__
-+	free(path);
-+#endif
- 	return(fd);
- }
- 
---- db.1.85/btree/bt_page.c
-+++ db.1.85/btree/bt_page.c
-@@ -65,6 +65,7 @@ __bt_free(t, h)
- 	h->prevpg = P_INVALID;
- 	h->nextpg = t->bt_free;
- 	t->bt_free = h->pgno;
-+	F_SET(t, B_METADIRTY);
- 
- 	/* Make sure the page gets written back. */
- 	return (mpool_put(t->bt_mp, h, MPOOL_DIRTY));
-@@ -92,6 +93,7 @@ __bt_new(t, npg)
- 	    (h = mpool_get(t->bt_mp, t->bt_free, 0)) != NULL) {
- 		*npg = t->bt_free;
- 		t->bt_free = h->nextpg;
-+		F_SET(t, B_METADIRTY);
- 		return (h);
- 	}
- 	return (mpool_new(t->bt_mp, npg));
---- db.1.85/btree/bt_put.c
-+++ db.1.85/btree/bt_put.c
-@@ -201,7 +201,7 @@ delete:		if (__bt_dleaf(t, key, h, index
- 	 * into the offset array, shift the pointers up.
- 	 */
- 	nbytes = NBLEAFDBT(key->size, data->size);
--	if (h->upper - h->lower < nbytes + sizeof(indx_t)) {
-+	if ((u_int32_t) (h->upper - h->lower) < nbytes + sizeof(indx_t)) {
- 		if ((status = __bt_split(t, h, key,
- 		    data, dflags, nbytes, index)) != RET_SUCCESS)
- 			return (status);
-@@ -223,7 +223,7 @@ delete:		if (__bt_dleaf(t, key, h, index
- 	    t->bt_cursor.pg.pgno == h->pgno && t->bt_cursor.pg.index >= index)
- 		++t->bt_cursor.pg.index;
- 
--	if (t->bt_order == NOT)
-+	if (t->bt_order == NOT) {
- 		if (h->nextpg == P_INVALID) {
- 			if (index == NEXTINDEX(h) - 1) {
- 				t->bt_order = FORWARD;
-@@ -237,6 +237,7 @@ delete:		if (__bt_dleaf(t, key, h, index
- 				t->bt_last.pgno = h->pgno;
- 			}
- 		}
-+	}
- 
- 	mpool_put(t->bt_mp, h, MPOOL_DIRTY);
- 
-@@ -284,7 +285,7 @@ bt_fast(t, key, data, exactp)
- 	 * have to search to get split stack.
- 	 */
- 	nbytes = NBLEAFDBT(key->size, data->size);
--	if (h->upper - h->lower < nbytes + sizeof(indx_t))
-+	if ((u_int32_t) (h->upper - h->lower) < nbytes + sizeof(indx_t))
- 		goto miss;
- 
- 	if (t->bt_order == FORWARD) {
---- db.1.85/btree/bt_seq.c
-+++ db.1.85/btree/bt_seq.c
-@@ -92,7 +92,7 @@ __bt_seq(dbp, key, data, flags)
- 	}
- 
- 	/*
--	 * If scan unitialized as yet, or starting at a specific record, set
-+	 * If scan uninitialized as yet, or starting at a specific record, set
- 	 * the scan to a specific key.  Both __bt_seqset and __bt_seqadv pin
- 	 * the page the cursor references if they're successful.
- 	 */
-@@ -358,7 +358,7 @@ __bt_first(t, key, erval, exactp)
- 	 * page) and return it.
- 	 */
- 	if ((ep = __bt_search(t, key, exactp)) == NULL)
--		return (NULL);
-+		return (RET_SPECIAL);
- 	if (*exactp) {
- 		if (F_ISSET(t, B_NODUPS)) {
- 			*erval = *ep;
---- db.1.85/btree/bt_split.c
-+++ db.1.85/btree/bt_split.c
-@@ -215,7 +215,8 @@ __bt_split(t, sp, key, data, flags, ilen
- 		}
- 
- 		/* Split the parent page if necessary or shift the indices. */
--		if (h->upper - h->lower < nbytes + sizeof(indx_t)) {
-+		if ((u_int32_t) (h->upper - h->lower)
-+		    < nbytes + sizeof(indx_t)) {
- 			sp = h;
- 			h = h->pgno == P_ROOT ?
- 			    bt_root(t, h, &l, &r, &skip, nbytes) :
-@@ -673,7 +674,8 @@ bt_psplit(t, h, l, r, pskip, ilen)
- 		 * where we decide to try and copy too much onto the left page.
- 		 * Make sure that doesn't happen.
- 		 */
--		if (skip <= off && used + nbytes >= full) {
-+		if ((skip <= off && used + nbytes + sizeof(indx_t) >= full)
-+		    || nxt == top - 1) {
- 			--off;
- 			break;
- 		}
-@@ -686,7 +688,7 @@ bt_psplit(t, h, l, r, pskip, ilen)
- 			memmove((char *)l + l->upper, src, nbytes);
- 		}
- 
--		used += nbytes;
-+		used += nbytes + sizeof(indx_t);
- 		if (used >= half) {
- 			if (!isbigkey || bigkeycnt == 3)
- 				break;
---- db.1.85/btree/bt_utils.c
-+++ db.1.85/btree/bt_utils.c
-@@ -76,7 +76,7 @@ __bt_ret(t, e, key, rkey, data, rdata, c
- 	bl = GETBLEAF(e->page, e->index);
- 
- 	/*
--	 * We must copy big keys/data to make them contigous.  Otherwise,
-+	 * We must copy big keys/data to make them contiguous.  Otherwise,
- 	 * leave the page pinned and don't copy unless the user specified
- 	 * concurrent access.
- 	 */
---- db.1.85/btree/btree.h
-+++ db.1.85/btree/btree.h
-@@ -43,6 +43,14 @@
- 
- #include <mpool.h>
- 
-+#define mpool_open __mpool_open
-+#define mpool_filter __mpool_filter
-+#define mpool_new __mpool_new
-+#define mpool_get __mpool_get
-+#define mpool_put __mpool_put
-+#define mpool_sync __mpool_sync
-+#define mpool_close __mpool_close
-+
- #define	DEFMINKEYPAGE	(2)		/* Minimum keys per page */
- #define	MINCACHE	(5)		/* Minimum cached pages */
- #define	MINPSIZE	(512)		/* Minimum page size */
-@@ -161,7 +169,7 @@ typedef struct _rinternal {
- #define NRINTERNAL							\
- 	LALIGN(sizeof(recno_t) + sizeof(pgno_t))
- 
--/* Copy a RINTERAL entry to the page. */
-+/* Copy a RINTERNAL entry to the page. */
- #define	WR_RINTERNAL(p, nrecs, pgno) {					\
- 	*(recno_t *)p = nrecs;						\
- 	p += sizeof(recno_t);						\
---- db.1.85/hash/extern.h
-+++ db.1.85/hash/extern.h
-@@ -52,7 +52,7 @@ void	 __free_ovflpage __P((HTAB *, BUFHE
- BUFHEAD	*__get_buf __P((HTAB *, u_int32_t, BUFHEAD *, int));
- int	 __get_page __P((HTAB *, char *, u_int32_t, int, int, int));
- int	 __ibitmap __P((HTAB *, int, int, int));
--u_int32_t	 __log2 __P((u_int32_t));
-+u_int32_t	 __hash_log2 __P((u_int32_t));
- int	 __put_page __P((HTAB *, char *, u_int32_t, int, int));
- void	 __reclaim_buf __P((HTAB *, BUFHEAD *));
- int	 __split_page __P((HTAB *, u_int32_t, u_int32_t));
---- db.1.85/hash/hash.c
-+++ db.1.85/hash/hash.c
-@@ -157,7 +157,8 @@ __hash_open(file, flags, mode, info, dfl
- 		if (hashp->VERSION != HASHVERSION &&
- 		    hashp->VERSION != OLDHASHVERSION)
- 			RETURN_ERROR(EFTYPE, error1);
--		if (hashp->hash(CHARKEY, sizeof(CHARKEY)) != hashp->H_CHARKEY)
-+		if (hashp->hash(CHARKEY, sizeof(CHARKEY))
-+		    != (u_int32_t) hashp->H_CHARKEY)
- 			RETURN_ERROR(EFTYPE, error1);
- 		/*
- 		 * Figure out how many segments we need.  Max_Bucket is the
-@@ -189,7 +190,7 @@ __hash_open(file, flags, mode, info, dfl
- 		__buf_init(hashp, DEF_BUFSIZE);
- 
- 	hashp->new_file = new_table;
--	hashp->save_file = file && (hashp->flags & O_RDWR);
-+	hashp->save_file = file && (hashp->flags & O_ACCMODE) != O_RDONLY;
- 	hashp->cbucket = -1;
- 	if (!(dbp = (DB *)malloc(sizeof(DB)))) {
- 		save_errno = errno;
-@@ -281,7 +282,9 @@ init_hash(hashp, file, info)
- 	const char *file;
- 	HASHINFO *info;
- {
-+#ifdef _STATBUF_ST_BLKSIZE
- 	struct stat statbuf;
-+#endif
- 	int nelem;
- 
- 	nelem = 1;
-@@ -298,17 +301,19 @@ init_hash(hashp, file, info)
- 	memset(hashp->BITMAPS, 0, sizeof (hashp->BITMAPS));
- 
- 	/* Fix bucket size to be optimal for file system */
-+#ifdef _STATBUF_ST_BLKSIZE
- 	if (file != NULL) {
- 		if (stat(file, &statbuf))
- 			return (NULL);
- 		hashp->BSIZE = statbuf.st_blksize;
--		hashp->BSHIFT = __log2(hashp->BSIZE);
-+		hashp->BSHIFT = __hash_log2(hashp->BSIZE);
- 	}
-+#endif
- 
- 	if (info) {
- 		if (info->bsize) {
- 			/* Round pagesize up to power of 2 */
--			hashp->BSHIFT = __log2(info->bsize);
-+			hashp->BSHIFT = __hash_log2(info->bsize);
- 			hashp->BSIZE = 1 << hashp->BSHIFT;
- 			if (hashp->BSIZE > MAX_BSIZE) {
- 				errno = EINVAL;
-@@ -357,7 +362,7 @@ init_htab(hashp, nelem)
- 	 */
- 	nelem = (nelem - 1) / hashp->FFACTOR + 1;
- 
--	l2 = __log2(MAX(nelem, 2));
-+	l2 = __hash_log2(MAX(nelem, 2));
- 	nbuckets = 1 << l2;
- 
- 	hashp->SPARES[l2] = l2 + 1;
-@@ -375,7 +380,7 @@ init_htab(hashp, nelem)
- 	    hashp->BSHIFT) + 1;
- 
- 	nsegs = (nbuckets - 1) / hashp->SGSIZE + 1;
--	nsegs = 1 << __log2(nsegs);
-+	nsegs = 1 << __hash_log2(nsegs);
- 
- 	if (nsegs > hashp->DSIZE)
- 		hashp->DSIZE = nsegs;
-@@ -505,7 +510,7 @@ flush_meta(hashp)
- 	else
- 		if (wsize != sizeof(HASHHDR)) {
- 			errno = EFTYPE;
--			hashp->errno = errno;
-+			hashp->errnum = errno;
- 			return (-1);
- 		}
- 	for (i = 0; i < NCACHED; i++)
-@@ -536,7 +541,7 @@ hash_get(dbp, key, data, flag)
- 
- 	hashp = (HTAB *)dbp->internal;
- 	if (flag) {
--		hashp->errno = errno = EINVAL;
-+		hashp->errnum = errno = EINVAL;
- 		return (ERROR);
- 	}
- 	return (hash_access(hashp, HASH_GET, (DBT *)key, data));
-@@ -553,11 +558,11 @@ hash_put(dbp, key, data, flag)
- 
- 	hashp = (HTAB *)dbp->internal;
- 	if (flag && flag != R_NOOVERWRITE) {
--		hashp->errno = errno = EINVAL;
-+		hashp->errnum = errno = EINVAL;
- 		return (ERROR);
- 	}
- 	if ((hashp->flags & O_ACCMODE) == O_RDONLY) {
--		hashp->errno = errno = EPERM;
-+		hashp->errnum = errno = EPERM;
- 		return (ERROR);
- 	}
- 	return (hash_access(hashp, flag == R_NOOVERWRITE ?
-@@ -574,11 +579,11 @@ hash_delete(dbp, key, flag)
- 
- 	hashp = (HTAB *)dbp->internal;
- 	if (flag && flag != R_CURSOR) {
--		hashp->errno = errno = EINVAL;
-+		hashp->errnum = errno = EINVAL;
- 		return (ERROR);
- 	}
- 	if ((hashp->flags & O_ACCMODE) == O_RDONLY) {
--		hashp->errno = errno = EPERM;
-+		hashp->errnum = errno = EPERM;
- 		return (ERROR);
- 	}
- 	return (hash_access(hashp, HASH_DELETE, (DBT *)key, NULL));
-@@ -729,7 +734,7 @@ hash_seq(dbp, key, data, flag)
- 
- 	hashp = (HTAB *)dbp->internal;
- 	if (flag && flag != R_FIRST && flag != R_NEXT) {
--		hashp->errno = errno = EINVAL;
-+		hashp->errnum = errno = EINVAL;
- 		return (ERROR);
- 	}
- #ifdef HASH_STATISTICS
-@@ -744,7 +749,7 @@ hash_seq(dbp, key, data, flag)
- 	for (bp = NULL; !bp || !bp[0]; ) {
- 		if (!(bufp = hashp->cpage)) {
- 			for (bucket = hashp->cbucket;
--			    bucket <= hashp->MAX_BUCKET;
-+			    bucket <= (u_int32_t) hashp->MAX_BUCKET;
- 			    bucket++, hashp->cndx = 1) {
- 				bufp = __get_buf(hashp, bucket, NULL, 0);
- 				if (!bufp)
-@@ -842,13 +847,13 @@ __expand_table(hashp)
- 	 * * increases), we need to copy the current contents of the spare
- 	 * split bucket to the next bucket.
- 	 */
--	spare_ndx = __log2(hashp->MAX_BUCKET + 1);
-+	spare_ndx = __hash_log2(hashp->MAX_BUCKET + 1);
- 	if (spare_ndx > hashp->OVFL_POINT) {
- 		hashp->SPARES[spare_ndx] = hashp->SPARES[hashp->OVFL_POINT];
- 		hashp->OVFL_POINT = spare_ndx;
- 	}
- 
--	if (new_bucket > hashp->HIGH_MASK) {
-+	if (new_bucket > (u_int32_t) hashp->HIGH_MASK) {
- 		/* Starting a new doubling */
- 		hashp->LOW_MASK = hashp->HIGH_MASK;
- 		hashp->HIGH_MASK = new_bucket | hashp->LOW_MASK;
-@@ -868,7 +873,7 @@ hash_realloc(p_ptr, oldsize, newsize)
- {
- 	register void *p;
- 
--	if (p = malloc(newsize)) {
-+	if ((p = malloc(newsize))) {
- 		memmove(p, *p_ptr, oldsize);
- 		memset((char *)p + oldsize, 0, newsize - oldsize);
- 		free(*p_ptr);
---- db.1.85/hash/hash.h
-+++ db.1.85/hash/hash.h
-@@ -103,7 +103,7 @@ typedef struct htab	 {		/* Memory reside
- 	BUFHEAD 	*cpage;		/* Current page */
- 	int		cbucket;	/* Current bucket */
- 	int		cndx;		/* Index of next item on cpage */
--	int		errno;		/* Error Number -- for DBM 
-+	int		errnum;		/* Error Number -- for DBM
- 					 * compatability */
- 	int		new_file;	/* Indicates if fd is backing store 
- 					 * or no */
-@@ -170,7 +170,7 @@ typedef struct htab	 {		/* Memory reside
- #define	OADDR_OF(S,O)	((u_int32_t)((u_int32_t)(S) << SPLITSHIFT) + (O))
- 
- #define BUCKET_TO_PAGE(B) \
--	(B) + hashp->HDRPAGES + ((B) ? hashp->SPARES[__log2((B)+1)-1] : 0)
-+	(B) + hashp->HDRPAGES + ((B) ? hashp->SPARES[__hash_log2((B)+1)-1] : 0)
- #define OADDR_TO_PAGE(B) 	\
- 	BUCKET_TO_PAGE ( (1 << SPLITNUM((B))) -1 ) + OPAGENUM((B));
- 
---- db.1.85/hash/hash_bigkey.c
-+++ db.1.85/hash/hash_bigkey.c
-@@ -121,7 +121,7 @@ __big_insert(hashp, bufp, key, val)
- 		if (!bufp)
- 			return (-1);
- 		n = p[0];
--		if (!key_size)
-+		if (!key_size) {
- 			if (FREESPACE(p)) {
- 				move_bytes = MIN(FREESPACE(p), val_size);
- 				off = OFFSET(p) - move_bytes;
-@@ -134,6 +134,7 @@ __big_insert(hashp, bufp, key, val)
- 				OFFSET(p) = off;
- 			} else
- 				p[n - 2] = FULL_KEY;
-+		}
- 		p = (u_int16_t *)bufp->page;
- 		cp = bufp->page;
- 		bufp->flags |= BUF_MOD;
-@@ -147,7 +148,7 @@ __big_insert(hashp, bufp, key, val)
- 		 * Here's the hack to make sure that if the data ends on the
- 		 * same page as the key ends, FREESPACE is at least one.
- 		 */
--		if (space == val_size && val_size == val->size)
-+		if ((int) space == val_size && (size_t) val_size == val->size)
- 			move_bytes--;
- 		off = OFFSET(p) - move_bytes;
- 		memmove(cp + off, val_data, move_bytes);
-@@ -249,7 +250,7 @@ __big_delete(hashp, bufp)
- 	bufp->flags |= BUF_MOD;
- 	if (rbufp)
- 		__free_ovflpage(hashp, rbufp);
--	if (last_bfp != rbufp)
-+	if (last_bfp && last_bfp != rbufp)
- 		__free_ovflpage(hashp, last_bfp);
- 
- 	hashp->NKEYS--;
-@@ -431,7 +432,7 @@ __big_return(hashp, bufp, ndx, val, set_
- 		}
- 
- 	val->size = collect_data(hashp, bufp, (int)len, set_current);
--	if (val->size == -1)
-+	if (val->size == (size_t) -1)
- 		return (-1);
- 	if (save_p->addr != save_addr) {
- 		/* We are pretty short on buffers. */
-@@ -510,7 +511,7 @@ __big_keydata(hashp, bufp, key, val, set
- 	int set;
- {
- 	key->size = collect_key(hashp, bufp, 0, val, set);
--	if (key->size == -1)
-+	if (key->size == (size_t) -1)
- 		return (-1);
- 	key->data = (u_char *)hashp->tmp_key;
- 	return (0);
-@@ -590,7 +591,7 @@ __big_split(hashp, op, np, big_keyp, add
- 		return (-1);
- 	change = (__call_hash(hashp, key.data, key.size) != obucket);
- 
--	if (ret->next_addr = __find_last_page(hashp, &big_keyp)) {
-+	if ((ret->next_addr = __find_last_page(hashp, &big_keyp))) {
- 		if (!(ret->nextp =
- 		    __get_buf(hashp, ret->next_addr, big_keyp, 0)))
- 			return (-1);;
---- db.1.85/hash/hash_log2.c
-+++ db.1.85/hash/hash_log2.c
-@@ -42,8 +42,10 @@ static char sccsid[] = "@(#)hash_log2.c	
- 
- #include <db.h>
- 
-+u_int32_t __hash_log2 __P((u_int32_t));
-+
- u_int32_t
--__log2(num)
-+__hash_log2(num)
- 	u_int32_t num;
- {
- 	register u_int32_t i, limit;
---- db.1.85/hash/ndbm.c
-+++ db.1.85/hash/ndbm.c
-@@ -47,6 +47,7 @@ static char sccsid[] = "@(#)ndbm.c	8.4 (
- 
- #include <stdio.h>
- #include <string.h>
-+#include <stdlib.h>
- 
- #include <ndbm.h>
- #include "hash.h"
-@@ -61,8 +62,16 @@ dbm_open(file, flags, mode)
- 	const char *file;
- 	int flags, mode;
- {
-+  	DBM *db;
- 	HASHINFO info;
--	char path[MAXPATHLEN];
-+	const size_t len = strlen(file) + sizeof (DBM_SUFFIX);
-+#ifdef __GNUC__
-+	char path[len];
-+#else
-+	char *path = malloc(len);
-+	if (path == NULL)
-+		return NULL;
-+#endif
- 
- 	info.bsize = 4096;
- 	info.ffactor = 40;
-@@ -72,7 +81,11 @@ dbm_open(file, flags, mode)
- 	info.lorder = 0;
- 	(void)strcpy(path, file);
- 	(void)strcat(path, DBM_SUFFIX);
--	return ((DBM *)__hash_open(path, flags, mode, &info, 0));
-+	db = (DBM *)__hash_open(path, flags, mode, &info, 0);
-+#ifndef	__GNUC__
-+	free(path);
-+#endif
-+	return db;
- }
- 
- extern void
-@@ -180,7 +193,7 @@ dbm_error(db)
- 	HTAB *hp;
- 
- 	hp = (HTAB *)db->internal;
--	return (hp->errno);
-+	return (hp->errnum);
- }
- 
- extern int
-@@ -190,7 +203,7 @@ dbm_clearerr(db)
- 	HTAB *hp;
- 
- 	hp = (HTAB *)db->internal;
--	hp->errno = 0;
-+	hp->errnum = 0;
- 	return (0);
- }
- 
---- db.1.85/recno/rec_close.c
-+++ db.1.85/recno/rec_close.c
-@@ -79,13 +79,14 @@ __rec_close(dbp)
- 	if (F_ISSET(t, R_MEMMAPPED) && munmap(t->bt_smap, t->bt_msize))
- 		status = RET_ERROR;
- 
--	if (!F_ISSET(t, R_INMEM))
-+	if (!F_ISSET(t, R_INMEM)) {
- 		if (F_ISSET(t, R_CLOSEFP)) {
- 			if (fclose(t->bt_rfp))
- 				status = RET_ERROR;
- 		} else
- 			if (close(t->bt_rfd))
- 				status = RET_ERROR;
-+	}
- 
- 	if (__bt_close(dbp) == RET_ERROR)
- 		status = RET_ERROR;
-@@ -150,7 +151,7 @@ __rec_sync(dbp, flags)
- 		 */
- 		status = (dbp->seq)(dbp, &key, &data, R_FIRST);
- 		while (status == RET_SUCCESS) {
--			if (write(t->bt_rfd, data.data, data.size) != data.size)
-+			if ((size_t) write(t->bt_rfd, data.data, data.size) != data.size)
- 				return (RET_ERROR);
- 			status = (dbp->seq)(dbp, &key, &data, R_NEXT);
- 		}
-@@ -162,7 +163,7 @@ __rec_sync(dbp, flags)
- 		while (status == RET_SUCCESS) {
- 			iov[0].iov_base = data.data;
- 			iov[0].iov_len = data.size;
--			if (writev(t->bt_rfd, iov, 2) != data.size + 1)
-+			if ((size_t) writev(t->bt_rfd, iov, 2) != data.size + 1)
- 				return (RET_ERROR);
- 			status = (dbp->seq)(dbp, &key, &data, R_NEXT);
- 		}
---- db.1.85/recno/rec_put.c
-+++ db.1.85/recno/rec_put.c
-@@ -256,7 +256,7 @@ __rec_iput(t, nrec, data, flags)
- 	 * the offset array, shift the pointers up.
- 	 */
- 	nbytes = NRLEAFDBT(data->size);
--	if (h->upper - h->lower < nbytes + sizeof(indx_t)) {
-+	if ((u_int32_t) (h->upper - h->lower) < nbytes + sizeof(indx_t)) {
- 		status = __bt_split(t, h, NULL, data, dflags, nbytes, index);
- 		if (status == RET_SUCCESS)
- 			++t->bt_nrecs;
---- db.1.85/recno/rec_seq.c
-+++ db.1.85/recno/rec_seq.c
-@@ -31,7 +31,7 @@
-  * SUCH DAMAGE.
-  */
- 
--#ifndef lint
-+#if defined(LIBC_SCCS) && !defined(lint)
- static char sccsid[] = "@(#)rec_seq.c	8.3 (Berkeley) 7/14/94";
- #endif /* not lint */
- 
---- db.1.85/recno/rec_utils.c
-+++ db.1.85/recno/rec_utils.c
-@@ -90,7 +90,7 @@ dataonly:
- 		return (RET_SUCCESS);
- 
- 	/*
--	 * We must copy big keys/data to make them contigous.  Otherwise,
-+	 * We must copy big keys/data to make them contiguous.  Otherwise,
- 	 * leave the page pinned and don't copy unless the user specified
- 	 * concurrent access.
- 	 */
---- db.1.85/mpool/mpool.c
-+++ db.1.85/mpool/mpool.c
-@@ -50,6 +50,14 @@ static char sccsid[] = "@(#)mpool.c	8.5 
- #define	__MPOOLINTERFACE_PRIVATE
- #include <mpool.h>
- 
-+#define mpool_open __mpool_open
-+#define mpool_filter __mpool_filter
-+#define mpool_new __mpool_new
-+#define mpool_get __mpool_get
-+#define mpool_put __mpool_put
-+#define mpool_sync __mpool_sync
-+#define mpool_close __mpool_close
-+
- static BKT *mpool_bkt __P((MPOOL *));
- static BKT *mpool_look __P((MPOOL *, pgno_t));
- static int  mpool_write __P((MPOOL *, BKT *));
-@@ -205,7 +213,8 @@ mpool_get(mp, pgno, flags)
- 	off = mp->pagesize * pgno;
- 	if (lseek(mp->fd, off, SEEK_SET) != off)
- 		return (NULL);
--	if ((nr = read(mp->fd, bp->page, mp->pagesize)) != mp->pagesize) {
-+	if ((u_long) (nr = read(mp->fd, bp->page, mp->pagesize))
-+	    != mp->pagesize) {
- 		if (nr >= 0)
- 			errno = EFTYPE;
- 		return (NULL);
-@@ -300,6 +309,23 @@ mpool_sync(mp)
- 	return (fsync(mp->fd) ? RET_ERROR : RET_SUCCESS);
- }
- 
-+#undef mpool_open
-+#undef mpool_filter
-+#undef mpool_new
-+#undef mpool_get
-+#undef mpool_put
-+#undef mpool_close
-+#undef mpool_sync
-+#define weak_alias(original, alias) \
-+	asm (".weak " #alias "\n" #alias " = " #original);
-+weak_alias (__mpool_open, mpool_open)
-+weak_alias (__mpool_filter, mpool_filter)
-+weak_alias (__mpool_new, mpool_new)
-+weak_alias (__mpool_get, mpool_get)
-+weak_alias (__mpool_put, mpool_put)
-+weak_alias (__mpool_close, mpool_close)
-+weak_alias (__mpool_sync, mpool_sync)
-+
- /*
-  * mpool_bkt
-  *	Get a page from the cache (or create one).
-@@ -380,7 +406,7 @@ mpool_write(mp, bp)
- 	off = mp->pagesize * bp->pgno;
- 	if (lseek(mp->fd, off, SEEK_SET) != off)
- 		return (RET_ERROR);
--	if (write(mp->fd, bp->page, mp->pagesize) != mp->pagesize)
-+	if ((u_long) write(mp->fd, bp->page, mp->pagesize) != mp->pagesize)
- 		return (RET_ERROR);
- 
- 	bp->flags &= ~MPOOL_DIRTY;
---- db.1.85/db/db.c
-+++ db.1.85/db/db.c
-@@ -44,6 +44,8 @@ static char sccsid[] = "@(#)db.c	8.4 (Be
- 
- #include <db.h>
- 
-+#define dbopen __dbopen
-+
- DB *
- dbopen(fname, flags, mode, type, openinfo)
- 	const char *fname;
-@@ -72,9 +74,13 @@ dbopen(fname, flags, mode, type, openinf
- 	errno = EINVAL;
- 	return (NULL);
- }
-+#undef dbopen
-+#define weak_alias(original, alias) \
-+        asm (".weak " #alias "\n" #alias " = " #original);
-+weak_alias (__dbopen, dbopen)
- 
- static int
--__dberr()
-+__dberr __P((void))
- {
- 	return (RET_ERROR);
- }
-@@ -90,10 +96,14 @@ __dbpanic(dbp)
- 	DB *dbp;
- {
- 	/* The only thing that can succeed is a close. */
--	dbp->del = (int (*)())__dberr;
--	dbp->fd = (int (*)())__dberr;
--	dbp->get = (int (*)())__dberr;
--	dbp->put = (int (*)())__dberr;
--	dbp->seq = (int (*)())__dberr;
--	dbp->sync = (int (*)())__dberr;
-+	dbp->del = (int (*)__P((const struct __db *,
-+				const DBT *, u_int))) __dberr;
-+	dbp->get = (int (*)__P((const struct __db *,
-+				const DBT *, DBT *, u_int))) __dberr;
-+	dbp->put = (int (*)__P((const struct __db *,
-+				DBT *, const DBT *, u_int))) __dberr;
-+	dbp->seq = (int (*)__P((const struct __db *,
-+				DBT *, DBT *, u_int))) __dberr;
-+	dbp->sync = (int (*)__P((const struct __db *, u_int))) __dberr;
-+	dbp->fd = (int (*)__P((const struct __db *))) __dberr;
- }
---- db.1.85/PORT/include/ndbm.h
-+++ db.1.85/PORT/include/ndbm.h
+diff --git a/PORT/include/ndbm.h b/PORT/include/ndbm.h
+index a545bca..db14dff 100644
+--- a/PORT/include/ndbm.h
++++ b/PORT/include/ndbm.h
 @@ -36,8 +36,8 @@
   *	@(#)ndbm.h	8.1 (Berkeley) 6/2/93
   */
@@ -776,247 +23,10 @@ things like hunks that only change whitespace
  
 -#endif /* !_NDBM_H_ */
 +#endif /* ndbm.h */
---- db.1.85/PORT/linux/include/compat.h
-+++ db.1.85/PORT/linux/include/compat.h
-@@ -1,155 +1,9 @@
--/*-
-- * Copyright (c) 1991, 1993
-- *	The Regents of the University of California.  All rights reserved.
-- *
-- * Redistribution and use in source and binary forms, with or without
-- * modification, are permitted provided that the following conditions
-- * are met:
-- * 1. Redistributions of source code must retain the above copyright
-- *    notice, this list of conditions and the following disclaimer.
-- * 2. Redistributions in binary form must reproduce the above copyright
-- *    notice, this list of conditions and the following disclaimer in the
-- *    documentation and/or other materials provided with the distribution.
-- * 3. All advertising materials mentioning features or use of this software
-- *    must display the following acknowledgement:
-- *	This product includes software developed by the University of
-- *	California, Berkeley and its contributors.
-- * 4. Neither the name of the University nor the names of its contributors
-- *    may be used to endorse or promote products derived from this software
-- *    without specific prior written permission.
-- *
-- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
-- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
-- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
-- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
-- * SUCH DAMAGE.
-- *
-- *	@(#)compat.h	8.13 (Berkeley) 2/21/94
-- */
--
--#ifndef	_COMPAT_H_
--#define	_COMPAT_H_
-+/* Values for building 4.4 BSD db routines in the GNU C library.  */
- 
--#include <sys/types.h>
-+#ifndef _compat_h_
-+#define _compat_h_
- 
--/*
-- * If your system doesn't typedef u_long, u_short, or u_char, change
-- * the 0 to a 1.
-- */
--#if 0
--typedef unsigned char	u_char;		/* 4.[34]BSD names. */
--typedef unsigned int	u_int;
--typedef unsigned long	u_long;
--typedef unsigned short	u_short;
--#endif
--
--/* If your system doesn't typedef size_t, change the 0 to a 1. */
--#if 0
--typedef unsigned int	size_t;		/* POSIX, 4.[34]BSD names. */
--#endif
--
--/* If your system doesn't typedef ssize_t, change the 0 to a 1. */
--#if 0
--typedef	int		ssize_t;	/* POSIX names. */
--#endif
--
--/*
-- * If your system doesn't have the POSIX type for a signal mask,
-- * change the 0 to a 1.
-- */
--#if 0					/* POSIX 1003.1 signal mask type. */
--typedef unsigned int	sigset_t;
--#endif
--
--/*
-- * If your system's vsprintf returns a char *, not an int,
-- * change the 0 to a 1.
-- */
--#if 0
--#define	VSPRINTF_CHARSTAR
--#endif
--
--/*
-- * If you don't have POSIX 1003.1 signals, the signal code surrounding the 
-- * temporary file creation is intended to block all of the possible signals
-- * long enough to create the file and unlink it.  All of this stuff is
-- * intended to use old-style BSD calls to fake POSIX 1003.1 calls.
-- */
--#ifdef	NO_POSIX_SIGNALS
--#define	sigemptyset(set)	(*(set) = 0)
--#define	sigfillset(set)		(*(set) = ~(sigset_t)0, 0)
--#define	sigaddset(set,signo)	(*(set) |= sigmask(signo), 0)
--#define	sigdelset(set,signo)	(*(set) &= ~sigmask(signo), 0)
--#define	sigismember(set,signo)	((*(set) & sigmask(signo)) != 0)
--
--#define	SIG_BLOCK	1
--#define	SIG_UNBLOCK	2
--#define	SIG_SETMASK	3
--
--static int __sigtemp;		/* For the use of sigprocmask */
--
--/* Repeated test of oset != NULL is to avoid "*0". */
--#define	sigprocmask(how, set, oset)					\
--	((__sigtemp =							\
--	(((how) == SIG_BLOCK) ?						\
--		sigblock(0) | *(set) :					\
--	(((how) == SIG_UNBLOCK) ?					\
--		sigblock(0) & ~(*(set)) :				\
--	((how) == SIG_SETMASK ?						\
--		*(set) : sigblock(0))))),				\
--	((oset) ? (*(oset ? oset : set) = sigsetmask(__sigtemp)) :	\
--		sigsetmask(__sigtemp)), 0)
--#endif
--
--/*
-- * If your system doesn't have an include file with the appropriate
-- * byte order set, make sure you specify the correct one.
-- */
--#ifndef BYTE_ORDER
--#define	LITTLE_ENDIAN	1234		/* LSB first: i386, vax */
--#define	BIG_ENDIAN	4321		/* MSB first: 68000, ibm, net */
--#define	BYTE_ORDER	LITTLE_ENDIAN	/* Set for your system. */
--#endif
--
--#if defined(SYSV) || defined(SYSTEM5)
--#define	index(a, b)		strchr(a, b)
--#define	rindex(a, b)		strrchr(a, b)
--#define	bzero(a, b)		memset(a, 0, b)
--#define	bcmp(a, b, n)		memcmp(a, b, n)
--#define	bcopy(a, b, n)		memmove(b, a, n)
--#endif
--
--#if defined(BSD) || defined(BSD4_3)
--#define	strchr(a, b)		index(a, b)
--#define	strrchr(a, b)		rindex(a, b)
--#define	memcmp(a, b, n)		bcmp(a, b, n)
--#define	memmove(a, b, n)	bcopy(b, a, n)
--#endif
--
--/*
-- * 32-bit machine.  The db routines are theoretically independent of
-- * the size of u_shorts and u_longs, but I don't know that anyone has
-- * ever actually tried it.  At a minimum, change the following #define's
-- * if you are trying to compile on a different type of system.
-- */
--#ifndef USHRT_MAX
--#define	USHRT_MAX		0xFFFF
--#define	ULONG_MAX		0xFFFFFFFF
--#endif
--
--#ifndef O_ACCMODE			/* POSIX 1003.1 access mode mask. */
--#define	O_ACCMODE	(O_RDONLY|O_WRONLY|O_RDWR)
--#endif
--
--#ifndef	_POSIX2_RE_DUP_MAX		/* POSIX 1003.2 RE limit. */
--#define	_POSIX2_RE_DUP_MAX	255
--#endif
-+#include <fcntl.h>
- 
- /*
-  * If you can't provide lock values in the open(2) call.  Note, this
-@@ -163,41 +17,26 @@ static int __sigtemp;		/* For the use of
- #define	O_SHLOCK	0
- #endif
- 
-+#include <errno.h>
-+
- #ifndef EFTYPE
- #define	EFTYPE		EINVAL		/* POSIX 1003.1 format errno. */
- #endif
- 
--#ifndef	WCOREDUMP			/* 4.4BSD extension */
--#define	WCOREDUMP(a)	0
--#endif
--
--#ifndef	STDERR_FILENO
--#define	STDIN_FILENO	0		/* ANSI C #defines */
--#define	STDOUT_FILENO	1
--#define	STDERR_FILENO	2
--#endif
--
--#ifndef SEEK_END
--#define	SEEK_SET	0		/* POSIX 1003.1 seek values */
--#define	SEEK_CUR	1
--#define	SEEK_END	2
--#endif
-+#include <unistd.h>
-+#include <limits.h>
- 
- #ifndef _POSIX_VDISABLE			/* POSIX 1003.1 disabling char. */
- #define	_POSIX_VDISABLE	0		/* Some systems used 0. */
- #endif
- 
-+#include <termios.h>
-+
- #ifndef	TCSASOFT			/* 4.4BSD extension. */
- #define	TCSASOFT	0
- #endif
- 
--#ifndef _POSIX2_RE_DUP_MAX		/* POSIX 1003.2 values. */
--#define	_POSIX2_RE_DUP_MAX	255
--#endif
--
--#ifndef NULL				/* ANSI C #defines NULL everywhere. */
--#define	NULL		0
--#endif
-+#include <sys/param.h>
- 
- #ifndef	MAX				/* Usually found in <sys/param.h>. */
- #define	MAX(_a,_b)	((_a)<(_b)?(_b):(_a))
-@@ -206,26 +45,5 @@ static int __sigtemp;		/* For the use of
- #define	MIN(_a,_b)	((_a)<(_b)?(_a):(_b))
- #endif
- 
--/* Default file permissions. */
--#ifndef DEFFILEMODE			/* 4.4BSD extension. */
--#define	DEFFILEMODE	(S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
--#endif
--
--#ifndef S_ISDIR				/* POSIX 1003.1 file type tests. */
--#define	S_ISDIR(m)	((m & 0170000) == 0040000)	/* directory */
--#define	S_ISCHR(m)	((m & 0170000) == 0020000)	/* char special */
--#define	S_ISBLK(m)	((m & 0170000) == 0060000)	/* block special */
--#define	S_ISREG(m)	((m & 0170000) == 0100000)	/* regular file */
--#define	S_ISFIFO(m)	((m & 0170000) == 0010000)	/* fifo */
--#endif
--#ifndef S_ISLNK				/* BSD POSIX 1003.1 extensions */
--#define	S_ISLNK(m)	((m & 0170000) == 0120000)	/* symbolic link */
--#define	S_ISSOCK(m)	((m & 0170000) == 0140000)	/* socket */
--#endif
--
--/* The type of a va_list. */
--#ifndef _BSD_VA_LIST_			/* 4.4BSD #define. */
--#define	_BSD_VA_LIST_	char *
--#endif
- 
--#endif /* !_COMPAT_H_ */
-+#endif /* compat.h */
---- db.1.85/PORT/linux/Makefile
-+++ db.1.85/PORT/linux/Makefile
+diff --git a/PORT/linux/Makefile b/PORT/linux/Makefile
+index 85b09a7..aaacbbb 100644
+--- a/PORT/linux/Makefile
++++ b/PORT/linux/Makefile
 @@ -1,8 +1,14 @@
  #	@(#)Makefile	8.9 (Berkeley) 7/14/94
  
@@ -1033,7 +43,7 @@ things like hunks that only change whitespace
  OBJ2=	bt_close.o bt_conv.o bt_debug.o bt_delete.o bt_get.o bt_open.o \
  	bt_overflow.o bt_page.o bt_put.o bt_search.o bt_seq.o bt_split.o \
  	bt_utils.o
-@@ -10,93 +18,69 @@ OBJ3=	db.o
+@@ -10,93 +16,69 @@ OBJ3=	db.o
  OBJ4=	mpool.o
  OBJ5=	rec_close.o rec_delete.o rec_get.o rec_open.o rec_put.o rec_search.o \
  	rec_seq.o rec_utils.o
@@ -1043,6 +53,7 @@ things like hunks that only change whitespace
 +AR ?= ar
 +RANLIB ?= ranlib
  
+-MISC=	snprintf.o
 +LN = ln
 +INSTALL = install
 +DESTDIR =
@@ -1050,10 +61,10 @@ things like hunks that only change whitespace
 +bindir = $(prefix)/bin
 +libdir = $(prefix)/lib
 +includedir = $(prefix)/include
-+
--MISC=	snprintf.o
-+all: $(LIBDB) $(LIBDBSO) $(PROG)
  
+-${LIBDB}: ${OBJ1} ${OBJ2} ${OBJ3} ${OBJ4} ${OBJ5} ${MISC}
++all: $(LIBDB) $(LIBDBSO) $(PROG)
++
 +install: $(LIBDB) $(LIBDBSO) $(PROG)
 +	$(INSTALL) -m 0755 -d $(DESTDIR)$(libdir) $(DESTDIR)$(includedir) $(DESTDIR)$(bindir)
 +	$(INSTALL) -m 0644 $(LIBDB) $(DESTDIR)$(libdir)
@@ -1064,7 +75,6 @@ things like hunks that only change whitespace
 +	$(INSTALL) -m 0644 include/db.h include/mpool.h include/ndbm.h $(DESTDIR)$(includedir)
 +	$(INSTALL) -m 0755 $(PROG) $(DESTDIR)$(bindir)
 +
--${LIBDB}: ${OBJ1} ${OBJ2} ${OBJ3} ${OBJ4} ${OBJ5} ${MISC}
 +$(LIBDB): $(OBJS)
  	rm -f $@
 -	ar cq $@ \
@@ -1072,18 +82,20 @@ things like hunks that only change whitespace
 -	ranlib $@
 +	$(AR) cq $@ $(OBJS)
 +	$(RANLIB) $@
- 
--clean:
--	rm -f ${LIBDB} ${OBJ1} ${OBJ2} ${OBJ3} ${OBJ4} ${OBJ5} ${MISC}
++
 +$(LIBDBSO): $(SHOBJS)
 +	$(CC) -Wl,-O1 -Wl,--version-script=libdb.map -Wl,-soname=$(SONAME) -shared -o $(SONAME) $^
 +	ln -sf $(SONAME) $(LIBDBSO)
- 
--OORG=	-O
--CL=	${CC} -c -D__DBINTERFACE_PRIVATE ${OORG} -I. -Iinclude
++
 +$(PROG): db_dump185.o $(LIBDBSO)
 +	$(CC) -o $@ db_dump185.o $(LIBDBSO)
  
+ clean:
+-	rm -f ${LIBDB} ${OBJ1} ${OBJ2} ${OBJ3} ${OBJ4} ${OBJ5} ${MISC}
+-
+-OORG=	-O
+-CL=	${CC} -c -D__DBINTERFACE_PRIVATE ${OORG} -I. -Iinclude
+-
 -hash.o: ../../hash/hash.c
 -	${CL} -I../../hash ../../hash/hash.c
 -hash_bigkey.o: ../../hash/hash_bigkey.c
@@ -1129,14 +141,12 @@ things like hunks that only change whitespace
 -	${CL} -I../../btree ../../btree/bt_stack.c
 -bt_utils.o: ../../btree/bt_utils.c
 -	${CL} -I../../btree ../../btree/bt_utils.c
-+clean:
+-
 +	rm -f $(LIBDB) $(LIBDBSO) $(OBJS) $(SHOBJS)
- 
--db.o: ../../db/db.c
--	${CL} ../../db/db.c
++
 +OORG=	-O2
 +CL=	$(CC) -c -D__DBINTERFACE_PRIVATE $(OORG) -I. -Iinclude
- 
++
 +db_dump185.o: db_dump185.c
 +	$(CL) -o $@ $<
 +%.o: ../../hash/%.c
@@ -1147,7 +157,9 @@ things like hunks that only change whitespace
 +	$(CL) -I../../btree -g -o $@ $<
 +%.os: ../../btree/%.c
 +	$(CL) -I../../btree -fpic -o $@ $<
-+db.o: ../../db/db.c
+ db.o: ../../db/db.c
+-	${CL} ../../db/db.c
+-
 +	$(CL) -g -o $@ $<
 +db.os: ../../db/db.c
 +	$(CL) -fpic -o $@ $<
@@ -1184,23 +196,12 @@ things like hunks that only change whitespace
 +	$(CL) -I../../recno -g -o $@ $<
 +%.os: ../../recno/%.c
 +	$(CL) -I../../recno -fpic -o $@ $<
---- db.1.85/PORT/linux/libdb.map
-+++ db.1.85/PORT/linux/libdb.map
-@@ -0,0 +1,11 @@
-+GLIBC_2.0 {
-+  global:
-+    # the real DB entry point.
-+    dbopen; __dbopen;
-+
-+    # The compatibility functions.
-+    dbm_clearerr; dbm_close; dbm_delete; dbm_dirfno; dbm_error;
-+    dbm_fetch; dbm_firstkey; dbm_nextkey; dbm_open; dbm_store;
-+  local:
-+    *;
-+};
---- db.1.85/PORT/linux/db_dump185.c
-+++ db.1.85/PORT/linux/db_dump185.c
-@@ -0,0 +1,350 @@
+diff --git a/PORT/linux/db_dump185.c b/PORT/linux/db_dump185.c
+new file mode 100644
+index 0000000..9d880b2
+--- /dev/null
++++ b/PORT/linux/db_dump185.c
+@@ -0,0 +1,351 @@
 +/*-
 + * See the file LICENSE for redistribution information.
 + *
@@ -1219,6 +220,7 @@ things like hunks that only change whitespace
 +#include <sys/types.h>
 +
 +#include <ctype.h>
++#include <err.h>
 +#include <errno.h>
 +#include <fcntl.h>
 +#include <stdlib.h>
@@ -1551,58 +553,921 @@ things like hunks that only change whitespace
 +	(void)fprintf(stderr, "usage: db_dump185 [-p] [-f file] db_file\n");
 +	exit(1);
 +}
---- db.1.85/include/mpool.h
-+++ db.1.85/include/mpool.h
-@@ -33,6 +33,9 @@
-  *	@(#)mpool.h	8.2 (Berkeley) 7/14/94
-  */
+diff --git a/PORT/linux/include/compat.h b/PORT/linux/include/compat.h
+index ae735ef..706e582 100644
+--- a/PORT/linux/include/compat.h
++++ b/PORT/linux/include/compat.h
+@@ -1,155 +1,9 @@
+-/*-
+- * Copyright (c) 1991, 1993
+- *	The Regents of the University of California.  All rights reserved.
+- *
+- * Redistribution and use in source and binary forms, with or without
+- * modification, are permitted provided that the following conditions
+- * are met:
+- * 1. Redistributions of source code must retain the above copyright
+- *    notice, this list of conditions and the following disclaimer.
+- * 2. Redistributions in binary form must reproduce the above copyright
+- *    notice, this list of conditions and the following disclaimer in the
+- *    documentation and/or other materials provided with the distribution.
+- * 3. All advertising materials mentioning features or use of this software
+- *    must display the following acknowledgement:
+- *	This product includes software developed by the University of
+- *	California, Berkeley and its contributors.
+- * 4. Neither the name of the University nor the names of its contributors
+- *    may be used to endorse or promote products derived from this software
+- *    without specific prior written permission.
+- *
+- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+- * SUCH DAMAGE.
+- *
+- *	@(#)compat.h	8.13 (Berkeley) 2/21/94
+- */
++/* Values for building 4.4 BSD db routines in the GNU C library.  */
  
-+#ifndef _MPOOL_H
-+#define _MPOOL_H 1
-+
- #include <sys/queue.h>
+-#ifndef	_COMPAT_H_
+-#define	_COMPAT_H_
++#ifndef _compat_h_
++#define _compat_h_
+ 
+-#include <sys/types.h>
+-
+-/*
+- * If your system doesn't typedef u_long, u_short, or u_char, change
+- * the 0 to a 1.
+- */
+-#if 0
+-typedef unsigned char	u_char;		/* 4.[34]BSD names. */
+-typedef unsigned int	u_int;
+-typedef unsigned long	u_long;
+-typedef unsigned short	u_short;
+-#endif
+-
+-/* If your system doesn't typedef size_t, change the 0 to a 1. */
+-#if 0
+-typedef unsigned int	size_t;		/* POSIX, 4.[34]BSD names. */
+-#endif
+-
+-/* If your system doesn't typedef ssize_t, change the 0 to a 1. */
+-#if 0
+-typedef	int		ssize_t;	/* POSIX names. */
+-#endif
+-
+-/*
+- * If your system doesn't have the POSIX type for a signal mask,
+- * change the 0 to a 1.
+- */
+-#if 0					/* POSIX 1003.1 signal mask type. */
+-typedef unsigned int	sigset_t;
+-#endif
+-
+-/*
+- * If your system's vsprintf returns a char *, not an int,
+- * change the 0 to a 1.
+- */
+-#if 0
+-#define	VSPRINTF_CHARSTAR
+-#endif
+-
+-/*
+- * If you don't have POSIX 1003.1 signals, the signal code surrounding the 
+- * temporary file creation is intended to block all of the possible signals
+- * long enough to create the file and unlink it.  All of this stuff is
+- * intended to use old-style BSD calls to fake POSIX 1003.1 calls.
+- */
+-#ifdef	NO_POSIX_SIGNALS
+-#define	sigemptyset(set)	(*(set) = 0)
+-#define	sigfillset(set)		(*(set) = ~(sigset_t)0, 0)
+-#define	sigaddset(set,signo)	(*(set) |= sigmask(signo), 0)
+-#define	sigdelset(set,signo)	(*(set) &= ~sigmask(signo), 0)
+-#define	sigismember(set,signo)	((*(set) & sigmask(signo)) != 0)
+-
+-#define	SIG_BLOCK	1
+-#define	SIG_UNBLOCK	2
+-#define	SIG_SETMASK	3
+-
+-static int __sigtemp;		/* For the use of sigprocmask */
+-
+-/* Repeated test of oset != NULL is to avoid "*0". */
+-#define	sigprocmask(how, set, oset)					\
+-	((__sigtemp =							\
+-	(((how) == SIG_BLOCK) ?						\
+-		sigblock(0) | *(set) :					\
+-	(((how) == SIG_UNBLOCK) ?					\
+-		sigblock(0) & ~(*(set)) :				\
+-	((how) == SIG_SETMASK ?						\
+-		*(set) : sigblock(0))))),				\
+-	((oset) ? (*(oset ? oset : set) = sigsetmask(__sigtemp)) :	\
+-		sigsetmask(__sigtemp)), 0)
+-#endif
+-
+-/*
+- * If your system doesn't have an include file with the appropriate
+- * byte order set, make sure you specify the correct one.
+- */
+-#ifndef BYTE_ORDER
+-#define	LITTLE_ENDIAN	1234		/* LSB first: i386, vax */
+-#define	BIG_ENDIAN	4321		/* MSB first: 68000, ibm, net */
+-#define	BYTE_ORDER	LITTLE_ENDIAN	/* Set for your system. */
+-#endif
+-
+-#if defined(SYSV) || defined(SYSTEM5)
+-#define	index(a, b)		strchr(a, b)
+-#define	rindex(a, b)		strrchr(a, b)
+-#define	bzero(a, b)		memset(a, 0, b)
+-#define	bcmp(a, b, n)		memcmp(a, b, n)
+-#define	bcopy(a, b, n)		memmove(b, a, n)
+-#endif
+-
+-#if defined(BSD) || defined(BSD4_3)
+-#define	strchr(a, b)		index(a, b)
+-#define	strrchr(a, b)		rindex(a, b)
+-#define	memcmp(a, b, n)		bcmp(a, b, n)
+-#define	memmove(a, b, n)	bcopy(b, a, n)
+-#endif
+-
+-/*
+- * 32-bit machine.  The db routines are theoretically independent of
+- * the size of u_shorts and u_longs, but I don't know that anyone has
+- * ever actually tried it.  At a minimum, change the following #define's
+- * if you are trying to compile on a different type of system.
+- */
+-#ifndef USHRT_MAX
+-#define	USHRT_MAX		0xFFFF
+-#define	ULONG_MAX		0xFFFFFFFF
+-#endif
+-
+-#ifndef O_ACCMODE			/* POSIX 1003.1 access mode mask. */
+-#define	O_ACCMODE	(O_RDONLY|O_WRONLY|O_RDWR)
+-#endif
+-
+-#ifndef	_POSIX2_RE_DUP_MAX		/* POSIX 1003.2 RE limit. */
+-#define	_POSIX2_RE_DUP_MAX	255
+-#endif
++#include <fcntl.h>
  
  /*
-@@ -67,9 +70,9 @@ typedef struct MPOOL {
- 	u_long	pagesize;		/* file page size */
- 	int	fd;			/* file descriptor */
- 					/* page in conversion routine */
--	void    (*pgin) __P((void *, pgno_t, void *));
-+	void    (*pgin) __PMT((void *, pgno_t, void *));
- 					/* page out conversion routine */
--	void    (*pgout) __P((void *, pgno_t, void *));
-+	void    (*pgout) __PMT((void *, pgno_t, void *));
- 	void	*pgcookie;		/* cookie for page in/out routines */
- #ifdef STATISTICS
- 	u_long	cachehit;
-@@ -85,15 +88,25 @@ typedef struct MPOOL {
- } MPOOL;
- 
- __BEGIN_DECLS
-+MPOOL	*__mpool_open __P((void *, int, pgno_t, pgno_t));
- MPOOL	*mpool_open __P((void *, int, pgno_t, pgno_t));
-+void	 __mpool_filter __P((MPOOL *, void (*)(void *, pgno_t, void *),
-+	    void (*)(void *, pgno_t, void *), void *));
- void	 mpool_filter __P((MPOOL *, void (*)(void *, pgno_t, void *),
- 	    void (*)(void *, pgno_t, void *), void *));
-+void	*__mpool_new __P((MPOOL *, pgno_t *));
- void	*mpool_new __P((MPOOL *, pgno_t *));
-+void	*__mpool_get __P((MPOOL *, pgno_t, u_int));
- void	*mpool_get __P((MPOOL *, pgno_t, u_int));
-+int	 __mpool_put __P((MPOOL *, void *, u_int));
- int	 mpool_put __P((MPOOL *, void *, u_int));
-+int	 __mpool_sync __P((MPOOL *));
- int	 mpool_sync __P((MPOOL *));
-+int	 __mpool_close __P((MPOOL *));
- int	 mpool_close __P((MPOOL *));
- #ifdef STATISTICS
- void	 mpool_stat __P((MPOOL *));
+  * If you can't provide lock values in the open(2) call.  Note, this
+@@ -163,41 +17,26 @@ static int __sigtemp;		/* For the use of sigprocmask */
+ #define	O_SHLOCK	0
  #endif
- __END_DECLS
+ 
++#include <errno.h>
 +
-+#endif /* mpool.h */
---- db.1.85/include/db.h
-+++ db.1.85/include/db.h
+ #ifndef EFTYPE
+ #define	EFTYPE		EINVAL		/* POSIX 1003.1 format errno. */
+ #endif
+ 
+-#ifndef	WCOREDUMP			/* 4.4BSD extension */
+-#define	WCOREDUMP(a)	0
+-#endif
+-
+-#ifndef	STDERR_FILENO
+-#define	STDIN_FILENO	0		/* ANSI C #defines */
+-#define	STDOUT_FILENO	1
+-#define	STDERR_FILENO	2
+-#endif
+-
+-#ifndef SEEK_END
+-#define	SEEK_SET	0		/* POSIX 1003.1 seek values */
+-#define	SEEK_CUR	1
+-#define	SEEK_END	2
+-#endif
++#include <unistd.h>
++#include <limits.h>
+ 
+ #ifndef _POSIX_VDISABLE			/* POSIX 1003.1 disabling char. */
+ #define	_POSIX_VDISABLE	0		/* Some systems used 0. */
+ #endif
+ 
++#include <termios.h>
++
+ #ifndef	TCSASOFT			/* 4.4BSD extension. */
+ #define	TCSASOFT	0
+ #endif
+ 
+-#ifndef _POSIX2_RE_DUP_MAX		/* POSIX 1003.2 values. */
+-#define	_POSIX2_RE_DUP_MAX	255
+-#endif
+-
+-#ifndef NULL				/* ANSI C #defines NULL everywhere. */
+-#define	NULL		0
+-#endif
++#include <sys/param.h>
+ 
+ #ifndef	MAX				/* Usually found in <sys/param.h>. */
+ #define	MAX(_a,_b)	((_a)<(_b)?(_b):(_a))
+@@ -206,26 +45,5 @@ static int __sigtemp;		/* For the use of sigprocmask */
+ #define	MIN(_a,_b)	((_a)<(_b)?(_a):(_b))
+ #endif
+ 
+-/* Default file permissions. */
+-#ifndef DEFFILEMODE			/* 4.4BSD extension. */
+-#define	DEFFILEMODE	(S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
+-#endif
+ 
+-#ifndef S_ISDIR				/* POSIX 1003.1 file type tests. */
+-#define	S_ISDIR(m)	((m & 0170000) == 0040000)	/* directory */
+-#define	S_ISCHR(m)	((m & 0170000) == 0020000)	/* char special */
+-#define	S_ISBLK(m)	((m & 0170000) == 0060000)	/* block special */
+-#define	S_ISREG(m)	((m & 0170000) == 0100000)	/* regular file */
+-#define	S_ISFIFO(m)	((m & 0170000) == 0010000)	/* fifo */
+-#endif
+-#ifndef S_ISLNK				/* BSD POSIX 1003.1 extensions */
+-#define	S_ISLNK(m)	((m & 0170000) == 0120000)	/* symbolic link */
+-#define	S_ISSOCK(m)	((m & 0170000) == 0140000)	/* socket */
+-#endif
+-
+-/* The type of a va_list. */
+-#ifndef _BSD_VA_LIST_			/* 4.4BSD #define. */
+-#define	_BSD_VA_LIST_	char *
+-#endif
+-
+-#endif /* !_COMPAT_H_ */
++#endif /* compat.h */
+diff --git a/PORT/linux/libdb.map b/PORT/linux/libdb.map
+new file mode 100644
+index 0000000..87e34c4
+--- /dev/null
++++ b/PORT/linux/libdb.map
+@@ -0,0 +1,11 @@
++GLIBC_2.0 {
++  global:
++    # the real DB entry point.
++    dbopen; __dbopen;
++
++    # The compatibility functions.
++    dbm_clearerr; dbm_close; dbm_delete; dbm_dirfno; dbm_error;
++    dbm_fetch; dbm_firstkey; dbm_nextkey; dbm_open; dbm_store;
++  local:
++    *;
++};
+diff --git a/btree/bt_delete.c b/btree/bt_delete.c
+index ece1ab6..2c6b68e 100644
+--- a/btree/bt_delete.c
++++ b/btree/bt_delete.c
+@@ -418,7 +418,7 @@ __bt_pdelete(t, h)
+ 		 * root page. If it's the rootpage, turn it back into an empty
+ 		 * leaf page.
+ 		 */
+-		if (NEXTINDEX(pg) == 1)
++		if (NEXTINDEX(pg) == 1) {
+ 			if (pg->pgno == P_ROOT) {
+ 				pg->lower = BTDATAOFF;
+ 				pg->upper = t->bt_psize;
+@@ -428,7 +428,7 @@ __bt_pdelete(t, h)
+ 					return (RET_ERROR);
+ 				continue;
+ 			}
+-		else {
++		} else {
+ 			/* Pack remaining key items at the end of the page. */
+ 			nksize = NBINTERNAL(bi->ksize);
+ 			from = (char *)pg + pg->upper;
+@@ -571,7 +571,7 @@ __bt_curdel(t, key, h, index)
+ 			key = &c->key;
+ 		}
+ 		/* Check previous key, if not at the beginning of the page. */
+-		if (index > 0) { 
++		if (index > 0) {
+ 			e.page = h;
+ 			e.index = index - 1;
+ 			if (__bt_cmp(t, key, &e) == 0) {
+diff --git a/btree/bt_open.c b/btree/bt_open.c
+index f052249..8cc12e3 100644
+--- a/btree/bt_open.c
++++ b/btree/bt_open.c
+@@ -125,7 +125,7 @@ __bt_open(fname, flags, mode, openinfo, dflags)
+ 		 */
+ 		if (b.psize &&
+ 		    (b.psize < MINPSIZE || b.psize > MAX_PAGE_OFFSET + 1 ||
+-		    b.psize & sizeof(indx_t) - 1))
++		    b.psize & (sizeof(indx_t) - 1)))
+ 			goto einval;
+ 
+ 		/* Minimum number of keys per page; absolute minimum is 2. */
+@@ -245,7 +245,7 @@ __bt_open(fname, flags, mode, openinfo, dflags)
+ 		if (m.magic != BTREEMAGIC || m.version != BTREEVERSION)
+ 			goto eftype;
+ 		if (m.psize < MINPSIZE || m.psize > MAX_PAGE_OFFSET + 1 ||
+-		    m.psize & sizeof(indx_t) - 1)
++		    m.psize & (sizeof(indx_t) - 1))
+ 			goto eftype;
+ 		if (m.flags & ~SAVEMETA)
+ 			goto eftype;
+@@ -259,7 +259,9 @@ __bt_open(fname, flags, mode, openinfo, dflags)
+ 		 * Don't overflow the page offset type.
+ 		 */
+ 		if (b.psize == 0) {
++#ifdef _STATBUF_ST_BLKSIZE
+ 			b.psize = sb.st_blksize;
++#endif
+ 			if (b.psize < MINPSIZE)
+ 				b.psize = MINPSIZE;
+ 			if (b.psize > MAX_PAGE_OFFSET + 1)
+@@ -278,8 +280,8 @@ __bt_open(fname, flags, mode, openinfo, dflags)
+ 	t->bt_psize = b.psize;
+ 
+ 	/* Set the cache size; must be a multiple of the page size. */
+-	if (b.cachesize && b.cachesize & b.psize - 1)
+-		b.cachesize += (~b.cachesize & b.psize - 1) + 1;
++	if (b.cachesize && b.cachesize & (b.psize - 1))
++		b.cachesize += (~b.cachesize & (b.psize - 1)) + 1;
+ 	if (b.cachesize < b.psize * MINCACHE)
+ 		b.cachesize = b.psize * MINCACHE;
+ 
+@@ -388,18 +390,30 @@ tmp()
+ {
+ 	sigset_t set, oset;
+ 	int fd;
+-	char *envtmp;
+-	char path[MAXPATHLEN];
++	const char *envtmp;
++	char *path;
++	static const char fmt[] = "%s/bt.XXXXXX";
++	size_t n;
+ 
+ 	envtmp = getenv("TMPDIR");
+-	(void)snprintf(path,
+-	    sizeof(path), "%s/bt.XXXXXX", envtmp ? envtmp : "/tmp");
++	if (!envtmp)
++	  envtmp = "/tmp";
++	n = strlen (envtmp) + sizeof fmt;
++#ifdef	__GNUC__
++	path = __builtin_alloca(n);
++#else
++	path = malloc(n);
++#endif
++	(void)snprintf(path, n, fmt, envtmp ? envtmp : "/tmp");
+ 
+ 	(void)sigfillset(&set);
+ 	(void)sigprocmask(SIG_BLOCK, &set, &oset);
+ 	if ((fd = mkstemp(path)) != -1)
+ 		(void)unlink(path);
+ 	(void)sigprocmask(SIG_SETMASK, &oset, NULL);
++#ifndef	__GNUC__
++	free(path);
++#endif
+ 	return(fd);
+ }
+ 
+diff --git a/btree/bt_page.c b/btree/bt_page.c
+index 0d9d138..ce9cbf1 100644
+--- a/btree/bt_page.c
++++ b/btree/bt_page.c
+@@ -65,6 +65,7 @@ __bt_free(t, h)
+ 	h->prevpg = P_INVALID;
+ 	h->nextpg = t->bt_free;
+ 	t->bt_free = h->pgno;
++	F_SET(t, B_METADIRTY);
+ 
+ 	/* Make sure the page gets written back. */
+ 	return (mpool_put(t->bt_mp, h, MPOOL_DIRTY));
+@@ -92,6 +93,7 @@ __bt_new(t, npg)
+ 	    (h = mpool_get(t->bt_mp, t->bt_free, 0)) != NULL) {
+ 		*npg = t->bt_free;
+ 		t->bt_free = h->nextpg;
++		F_SET(t, B_METADIRTY);
+ 		return (h);
+ 	}
+ 	return (mpool_new(t->bt_mp, npg));
+diff --git a/btree/bt_put.c b/btree/bt_put.c
+index 952be09..15309c6 100644
+--- a/btree/bt_put.c
++++ b/btree/bt_put.c
+@@ -201,7 +201,7 @@ delete:		if (__bt_dleaf(t, key, h, index) == RET_ERROR) {
+ 	 * into the offset array, shift the pointers up.
+ 	 */
+ 	nbytes = NBLEAFDBT(key->size, data->size);
+-	if (h->upper - h->lower < nbytes + sizeof(indx_t)) {
++	if ((u_int32_t) (h->upper - h->lower) < nbytes + sizeof(indx_t)) {
+ 		if ((status = __bt_split(t, h, key,
+ 		    data, dflags, nbytes, index)) != RET_SUCCESS)
+ 			return (status);
+@@ -223,7 +223,7 @@ delete:		if (__bt_dleaf(t, key, h, index) == RET_ERROR) {
+ 	    t->bt_cursor.pg.pgno == h->pgno && t->bt_cursor.pg.index >= index)
+ 		++t->bt_cursor.pg.index;
+ 
+-	if (t->bt_order == NOT)
++	if (t->bt_order == NOT) {
+ 		if (h->nextpg == P_INVALID) {
+ 			if (index == NEXTINDEX(h) - 1) {
+ 				t->bt_order = FORWARD;
+@@ -237,6 +237,7 @@ delete:		if (__bt_dleaf(t, key, h, index) == RET_ERROR) {
+ 				t->bt_last.pgno = h->pgno;
+ 			}
+ 		}
++	}
+ 
+ 	mpool_put(t->bt_mp, h, MPOOL_DIRTY);
+ 
+@@ -284,7 +285,7 @@ bt_fast(t, key, data, exactp)
+ 	 * have to search to get split stack.
+ 	 */
+ 	nbytes = NBLEAFDBT(key->size, data->size);
+-	if (h->upper - h->lower < nbytes + sizeof(indx_t))
++	if ((u_int32_t) (h->upper - h->lower) < nbytes + sizeof(indx_t))
+ 		goto miss;
+ 
+ 	if (t->bt_order == FORWARD) {
+diff --git a/btree/bt_seq.c b/btree/bt_seq.c
+index 303b481..2ac146c 100644
+--- a/btree/bt_seq.c
++++ b/btree/bt_seq.c
+@@ -92,7 +92,7 @@ __bt_seq(dbp, key, data, flags)
+ 	}
+ 
+ 	/*
+-	 * If scan unitialized as yet, or starting at a specific record, set
++	 * If scan uninitialized as yet, or starting at a specific record, set
+ 	 * the scan to a specific key.  Both __bt_seqset and __bt_seqadv pin
+ 	 * the page the cursor references if they're successful.
+ 	 */
+@@ -358,7 +358,7 @@ __bt_first(t, key, erval, exactp)
+ 	 * page) and return it.
+ 	 */
+ 	if ((ep = __bt_search(t, key, exactp)) == NULL)
+-		return (NULL);
++		return (RET_SPECIAL);
+ 	if (*exactp) {
+ 		if (F_ISSET(t, B_NODUPS)) {
+ 			*erval = *ep;
+diff --git a/btree/bt_split.c b/btree/bt_split.c
+index 1646d82..4119ccb 100644
+--- a/btree/bt_split.c
++++ b/btree/bt_split.c
+@@ -215,7 +215,8 @@ __bt_split(t, sp, key, data, flags, ilen, argskip)
+ 		}
+ 
+ 		/* Split the parent page if necessary or shift the indices. */
+-		if (h->upper - h->lower < nbytes + sizeof(indx_t)) {
++		if ((u_int32_t) (h->upper - h->lower)
++		    < nbytes + sizeof(indx_t)) {
+ 			sp = h;
+ 			h = h->pgno == P_ROOT ?
+ 			    bt_root(t, h, &l, &r, &skip, nbytes) :
+@@ -673,7 +674,8 @@ bt_psplit(t, h, l, r, pskip, ilen)
+ 		 * where we decide to try and copy too much onto the left page.
+ 		 * Make sure that doesn't happen.
+ 		 */
+-		if (skip <= off && used + nbytes >= full) {
++		if ((skip <= off && used + nbytes + sizeof(indx_t) >= full)
++		    || nxt == top - 1) {
+ 			--off;
+ 			break;
+ 		}
+@@ -686,7 +688,7 @@ bt_psplit(t, h, l, r, pskip, ilen)
+ 			memmove((char *)l + l->upper, src, nbytes);
+ 		}
+ 
+-		used += nbytes;
++		used += nbytes + sizeof(indx_t);
+ 		if (used >= half) {
+ 			if (!isbigkey || bigkeycnt == 3)
+ 				break;
+diff --git a/btree/bt_utils.c b/btree/bt_utils.c
+index 9c1438e..1416c78 100644
+--- a/btree/bt_utils.c
++++ b/btree/bt_utils.c
+@@ -76,7 +76,7 @@ __bt_ret(t, e, key, rkey, data, rdata, copy)
+ 	bl = GETBLEAF(e->page, e->index);
+ 
+ 	/*
+-	 * We must copy big keys/data to make them contigous.  Otherwise,
++	 * We must copy big keys/data to make them contiguous.  Otherwise,
+ 	 * leave the page pinned and don't copy unless the user specified
+ 	 * concurrent access.
+ 	 */
+diff --git a/btree/btree.h b/btree/btree.h
+index 36d35c9..1f4a9ec 100644
+--- a/btree/btree.h
++++ b/btree/btree.h
+@@ -43,6 +43,14 @@
+ 
+ #include <mpool.h>
+ 
++#define mpool_open __mpool_open
++#define mpool_filter __mpool_filter
++#define mpool_new __mpool_new
++#define mpool_get __mpool_get
++#define mpool_put __mpool_put
++#define mpool_sync __mpool_sync
++#define mpool_close __mpool_close
++
+ #define	DEFMINKEYPAGE	(2)		/* Minimum keys per page */
+ #define	MINCACHE	(5)		/* Minimum cached pages */
+ #define	MINPSIZE	(512)		/* Minimum page size */
+@@ -161,7 +169,7 @@ typedef struct _rinternal {
+ #define NRINTERNAL							\
+ 	LALIGN(sizeof(recno_t) + sizeof(pgno_t))
+ 
+-/* Copy a RINTERAL entry to the page. */
++/* Copy a RINTERNAL entry to the page. */
+ #define	WR_RINTERNAL(p, nrecs, pgno) {					\
+ 	*(recno_t *)p = nrecs;						\
+ 	p += sizeof(recno_t);						\
+diff --git a/db/db.c b/db/db.c
+index a18f056..0bee00b 100644
+--- a/db/db.c
++++ b/db/db.c
+@@ -44,6 +44,8 @@ static char sccsid[] = "@(#)db.c	8.4 (Berkeley) 2/21/94";
+ 
+ #include <db.h>
+ 
++#define dbopen __dbopen
++
+ DB *
+ dbopen(fname, flags, mode, type, openinfo)
+ 	const char *fname;
+@@ -72,9 +74,13 @@ dbopen(fname, flags, mode, type, openinfo)
+ 	errno = EINVAL;
+ 	return (NULL);
+ }
++#undef dbopen
++#define weak_alias(original, alias) \
++        asm (".weak " #alias "\n" #alias " = " #original);
++weak_alias (__dbopen, dbopen)
+ 
+ static int
+-__dberr()
++__dberr __P((void))
+ {
+ 	return (RET_ERROR);
+ }
+@@ -90,10 +96,14 @@ __dbpanic(dbp)
+ 	DB *dbp;
+ {
+ 	/* The only thing that can succeed is a close. */
+-	dbp->del = (int (*)())__dberr;
+-	dbp->fd = (int (*)())__dberr;
+-	dbp->get = (int (*)())__dberr;
+-	dbp->put = (int (*)())__dberr;
+-	dbp->seq = (int (*)())__dberr;
+-	dbp->sync = (int (*)())__dberr;
++	dbp->del = (int (*)__P((const struct __db *,
++				const DBT *, u_int))) __dberr;
++	dbp->get = (int (*)__P((const struct __db *,
++				const DBT *, DBT *, u_int))) __dberr;
++	dbp->put = (int (*)__P((const struct __db *,
++				DBT *, const DBT *, u_int))) __dberr;
++	dbp->seq = (int (*)__P((const struct __db *,
++				DBT *, DBT *, u_int))) __dberr;
++	dbp->sync = (int (*)__P((const struct __db *, u_int))) __dberr;
++	dbp->fd = (int (*)__P((const struct __db *))) __dberr;
+ }
+diff --git a/hash/extern.h b/hash/extern.h
+index 3167e6d..4f1f23d 100644
+--- a/hash/extern.h
++++ b/hash/extern.h
+@@ -52,7 +52,7 @@ void	 __free_ovflpage __P((HTAB *, BUFHEAD *));
+ BUFHEAD	*__get_buf __P((HTAB *, u_int32_t, BUFHEAD *, int));
+ int	 __get_page __P((HTAB *, char *, u_int32_t, int, int, int));
+ int	 __ibitmap __P((HTAB *, int, int, int));
+-u_int32_t	 __log2 __P((u_int32_t));
++u_int32_t	 __hash_log2 __P((u_int32_t));
+ int	 __put_page __P((HTAB *, char *, u_int32_t, int, int));
+ void	 __reclaim_buf __P((HTAB *, BUFHEAD *));
+ int	 __split_page __P((HTAB *, u_int32_t, u_int32_t));
+diff --git a/hash/hash.c b/hash/hash.c
+index 4b7b732..99592ea 100644
+--- a/hash/hash.c
++++ b/hash/hash.c
+@@ -157,7 +157,8 @@ __hash_open(file, flags, mode, info, dflags)
+ 		if (hashp->VERSION != HASHVERSION &&
+ 		    hashp->VERSION != OLDHASHVERSION)
+ 			RETURN_ERROR(EFTYPE, error1);
+-		if (hashp->hash(CHARKEY, sizeof(CHARKEY)) != hashp->H_CHARKEY)
++		if (hashp->hash(CHARKEY, sizeof(CHARKEY))
++		    != (u_int32_t) hashp->H_CHARKEY)
+ 			RETURN_ERROR(EFTYPE, error1);
+ 		/*
+ 		 * Figure out how many segments we need.  Max_Bucket is the
+@@ -189,7 +190,7 @@ __hash_open(file, flags, mode, info, dflags)
+ 		__buf_init(hashp, DEF_BUFSIZE);
+ 
+ 	hashp->new_file = new_table;
+-	hashp->save_file = file && (hashp->flags & O_RDWR);
++	hashp->save_file = file && (hashp->flags & O_ACCMODE) != O_RDONLY;
+ 	hashp->cbucket = -1;
+ 	if (!(dbp = (DB *)malloc(sizeof(DB)))) {
+ 		save_errno = errno;
+@@ -281,7 +282,9 @@ init_hash(hashp, file, info)
+ 	const char *file;
+ 	HASHINFO *info;
+ {
++#ifdef _STATBUF_ST_BLKSIZE
+ 	struct stat statbuf;
++#endif
+ 	int nelem;
+ 
+ 	nelem = 1;
+@@ -298,17 +301,19 @@ init_hash(hashp, file, info)
+ 	memset(hashp->BITMAPS, 0, sizeof (hashp->BITMAPS));
+ 
+ 	/* Fix bucket size to be optimal for file system */
++#ifdef _STATBUF_ST_BLKSIZE
+ 	if (file != NULL) {
+ 		if (stat(file, &statbuf))
+ 			return (NULL);
+ 		hashp->BSIZE = statbuf.st_blksize;
+-		hashp->BSHIFT = __log2(hashp->BSIZE);
++		hashp->BSHIFT = __hash_log2(hashp->BSIZE);
+ 	}
++#endif
+ 
+ 	if (info) {
+ 		if (info->bsize) {
+ 			/* Round pagesize up to power of 2 */
+-			hashp->BSHIFT = __log2(info->bsize);
++			hashp->BSHIFT = __hash_log2(info->bsize);
+ 			hashp->BSIZE = 1 << hashp->BSHIFT;
+ 			if (hashp->BSIZE > MAX_BSIZE) {
+ 				errno = EINVAL;
+@@ -357,7 +362,7 @@ init_htab(hashp, nelem)
+ 	 */
+ 	nelem = (nelem - 1) / hashp->FFACTOR + 1;
+ 
+-	l2 = __log2(MAX(nelem, 2));
++	l2 = __hash_log2(MAX(nelem, 2));
+ 	nbuckets = 1 << l2;
+ 
+ 	hashp->SPARES[l2] = l2 + 1;
+@@ -375,7 +380,7 @@ init_htab(hashp, nelem)
+ 	    hashp->BSHIFT) + 1;
+ 
+ 	nsegs = (nbuckets - 1) / hashp->SGSIZE + 1;
+-	nsegs = 1 << __log2(nsegs);
++	nsegs = 1 << __hash_log2(nsegs);
+ 
+ 	if (nsegs > hashp->DSIZE)
+ 		hashp->DSIZE = nsegs;
+@@ -505,7 +510,7 @@ flush_meta(hashp)
+ 	else
+ 		if (wsize != sizeof(HASHHDR)) {
+ 			errno = EFTYPE;
+-			hashp->errno = errno;
++			hashp->errnum = errno;
+ 			return (-1);
+ 		}
+ 	for (i = 0; i < NCACHED; i++)
+@@ -536,7 +541,7 @@ hash_get(dbp, key, data, flag)
+ 
+ 	hashp = (HTAB *)dbp->internal;
+ 	if (flag) {
+-		hashp->errno = errno = EINVAL;
++		hashp->errnum = errno = EINVAL;
+ 		return (ERROR);
+ 	}
+ 	return (hash_access(hashp, HASH_GET, (DBT *)key, data));
+@@ -553,11 +558,11 @@ hash_put(dbp, key, data, flag)
+ 
+ 	hashp = (HTAB *)dbp->internal;
+ 	if (flag && flag != R_NOOVERWRITE) {
+-		hashp->errno = errno = EINVAL;
++		hashp->errnum = errno = EINVAL;
+ 		return (ERROR);
+ 	}
+ 	if ((hashp->flags & O_ACCMODE) == O_RDONLY) {
+-		hashp->errno = errno = EPERM;
++		hashp->errnum = errno = EPERM;
+ 		return (ERROR);
+ 	}
+ 	return (hash_access(hashp, flag == R_NOOVERWRITE ?
+@@ -574,11 +579,11 @@ hash_delete(dbp, key, flag)
+ 
+ 	hashp = (HTAB *)dbp->internal;
+ 	if (flag && flag != R_CURSOR) {
+-		hashp->errno = errno = EINVAL;
++		hashp->errnum = errno = EINVAL;
+ 		return (ERROR);
+ 	}
+ 	if ((hashp->flags & O_ACCMODE) == O_RDONLY) {
+-		hashp->errno = errno = EPERM;
++		hashp->errnum = errno = EPERM;
+ 		return (ERROR);
+ 	}
+ 	return (hash_access(hashp, HASH_DELETE, (DBT *)key, NULL));
+@@ -729,7 +734,7 @@ hash_seq(dbp, key, data, flag)
+ 
+ 	hashp = (HTAB *)dbp->internal;
+ 	if (flag && flag != R_FIRST && flag != R_NEXT) {
+-		hashp->errno = errno = EINVAL;
++		hashp->errnum = errno = EINVAL;
+ 		return (ERROR);
+ 	}
+ #ifdef HASH_STATISTICS
+@@ -744,7 +749,7 @@ hash_seq(dbp, key, data, flag)
+ 	for (bp = NULL; !bp || !bp[0]; ) {
+ 		if (!(bufp = hashp->cpage)) {
+ 			for (bucket = hashp->cbucket;
+-			    bucket <= hashp->MAX_BUCKET;
++			    bucket <= (u_int32_t) hashp->MAX_BUCKET;
+ 			    bucket++, hashp->cndx = 1) {
+ 				bufp = __get_buf(hashp, bucket, NULL, 0);
+ 				if (!bufp)
+@@ -842,13 +847,13 @@ __expand_table(hashp)
+ 	 * * increases), we need to copy the current contents of the spare
+ 	 * split bucket to the next bucket.
+ 	 */
+-	spare_ndx = __log2(hashp->MAX_BUCKET + 1);
++	spare_ndx = __hash_log2(hashp->MAX_BUCKET + 1);
+ 	if (spare_ndx > hashp->OVFL_POINT) {
+ 		hashp->SPARES[spare_ndx] = hashp->SPARES[hashp->OVFL_POINT];
+ 		hashp->OVFL_POINT = spare_ndx;
+ 	}
+ 
+-	if (new_bucket > hashp->HIGH_MASK) {
++	if (new_bucket > (u_int32_t) hashp->HIGH_MASK) {
+ 		/* Starting a new doubling */
+ 		hashp->LOW_MASK = hashp->HIGH_MASK;
+ 		hashp->HIGH_MASK = new_bucket | hashp->LOW_MASK;
+@@ -868,7 +873,7 @@ hash_realloc(p_ptr, oldsize, newsize)
+ {
+ 	register void *p;
+ 
+-	if (p = malloc(newsize)) {
++	if ((p = malloc(newsize))) {
+ 		memmove(p, *p_ptr, oldsize);
+ 		memset((char *)p + oldsize, 0, newsize - oldsize);
+ 		free(*p_ptr);
+diff --git a/hash/hash.h b/hash/hash.h
+index 913e82b..98213e7 100644
+--- a/hash/hash.h
++++ b/hash/hash.h
+@@ -103,7 +103,7 @@ typedef struct htab	 {		/* Memory resident data structure */
+ 	BUFHEAD 	*cpage;		/* Current page */
+ 	int		cbucket;	/* Current bucket */
+ 	int		cndx;		/* Index of next item on cpage */
+-	int		errno;		/* Error Number -- for DBM 
++	int		errnum;		/* Error Number -- for DBM
+ 					 * compatability */
+ 	int		new_file;	/* Indicates if fd is backing store 
+ 					 * or no */
+@@ -170,7 +170,7 @@ typedef struct htab	 {		/* Memory resident data structure */
+ #define	OADDR_OF(S,O)	((u_int32_t)((u_int32_t)(S) << SPLITSHIFT) + (O))
+ 
+ #define BUCKET_TO_PAGE(B) \
+-	(B) + hashp->HDRPAGES + ((B) ? hashp->SPARES[__log2((B)+1)-1] : 0)
++	(B) + hashp->HDRPAGES + ((B) ? hashp->SPARES[__hash_log2((B)+1)-1] : 0)
+ #define OADDR_TO_PAGE(B) 	\
+ 	BUCKET_TO_PAGE ( (1 << SPLITNUM((B))) -1 ) + OPAGENUM((B));
+ 
+diff --git a/hash/hash_bigkey.c b/hash/hash_bigkey.c
+index 578314a..94c6408 100644
+--- a/hash/hash_bigkey.c
++++ b/hash/hash_bigkey.c
+@@ -121,7 +121,7 @@ __big_insert(hashp, bufp, key, val)
+ 		if (!bufp)
+ 			return (-1);
+ 		n = p[0];
+-		if (!key_size)
++		if (!key_size) {
+ 			if (FREESPACE(p)) {
+ 				move_bytes = MIN(FREESPACE(p), val_size);
+ 				off = OFFSET(p) - move_bytes;
+@@ -134,6 +134,7 @@ __big_insert(hashp, bufp, key, val)
+ 				OFFSET(p) = off;
+ 			} else
+ 				p[n - 2] = FULL_KEY;
++		}
+ 		p = (u_int16_t *)bufp->page;
+ 		cp = bufp->page;
+ 		bufp->flags |= BUF_MOD;
+@@ -147,7 +148,7 @@ __big_insert(hashp, bufp, key, val)
+ 		 * Here's the hack to make sure that if the data ends on the
+ 		 * same page as the key ends, FREESPACE is at least one.
+ 		 */
+-		if (space == val_size && val_size == val->size)
++		if ((int) space == val_size && (size_t) val_size == val->size)
+ 			move_bytes--;
+ 		off = OFFSET(p) - move_bytes;
+ 		memmove(cp + off, val_data, move_bytes);
+@@ -249,7 +250,7 @@ __big_delete(hashp, bufp)
+ 	bufp->flags |= BUF_MOD;
+ 	if (rbufp)
+ 		__free_ovflpage(hashp, rbufp);
+-	if (last_bfp != rbufp)
++	if (last_bfp && last_bfp != rbufp)
+ 		__free_ovflpage(hashp, last_bfp);
+ 
+ 	hashp->NKEYS--;
+@@ -431,7 +432,7 @@ __big_return(hashp, bufp, ndx, val, set_current)
+ 		}
+ 
+ 	val->size = collect_data(hashp, bufp, (int)len, set_current);
+-	if (val->size == -1)
++	if (val->size == (size_t) -1)
+ 		return (-1);
+ 	if (save_p->addr != save_addr) {
+ 		/* We are pretty short on buffers. */
+@@ -510,7 +511,7 @@ __big_keydata(hashp, bufp, key, val, set)
+ 	int set;
+ {
+ 	key->size = collect_key(hashp, bufp, 0, val, set);
+-	if (key->size == -1)
++	if (key->size == (size_t) -1)
+ 		return (-1);
+ 	key->data = (u_char *)hashp->tmp_key;
+ 	return (0);
+@@ -590,7 +591,7 @@ __big_split(hashp, op, np, big_keyp, addr, obucket, ret)
+ 		return (-1);
+ 	change = (__call_hash(hashp, key.data, key.size) != obucket);
+ 
+-	if (ret->next_addr = __find_last_page(hashp, &big_keyp)) {
++	if ((ret->next_addr = __find_last_page(hashp, &big_keyp))) {
+ 		if (!(ret->nextp =
+ 		    __get_buf(hashp, ret->next_addr, big_keyp, 0)))
+ 			return (-1);;
+diff --git a/hash/hash_log2.c b/hash/hash_log2.c
+index c8c56bf..6bcf9c1 100644
+--- a/hash/hash_log2.c
++++ b/hash/hash_log2.c
+@@ -42,8 +42,10 @@ static char sccsid[] = "@(#)hash_log2.c	8.2 (Berkeley) 5/31/94";
+ 
+ #include <db.h>
+ 
++u_int32_t __hash_log2 __P((u_int32_t));
++
+ u_int32_t
+-__log2(num)
++__hash_log2(num)
+ 	u_int32_t num;
+ {
+ 	register u_int32_t i, limit;
+diff --git a/hash/ndbm.c b/hash/ndbm.c
+index 2cbbe91..83aa766 100644
+--- a/hash/ndbm.c
++++ b/hash/ndbm.c
+@@ -47,6 +47,7 @@ static char sccsid[] = "@(#)ndbm.c	8.4 (Berkeley) 7/21/94";
+ 
+ #include <stdio.h>
+ #include <string.h>
++#include <stdlib.h>
+ 
+ #include <ndbm.h>
+ #include "hash.h"
+@@ -61,8 +62,16 @@ dbm_open(file, flags, mode)
+ 	const char *file;
+ 	int flags, mode;
+ {
++  	DBM *db;
+ 	HASHINFO info;
+-	char path[MAXPATHLEN];
++	const size_t len = strlen(file) + sizeof (DBM_SUFFIX);
++#ifdef __GNUC__
++	char path[len];
++#else
++	char *path = malloc(len);
++	if (path == NULL)
++		return NULL;
++#endif
+ 
+ 	info.bsize = 4096;
+ 	info.ffactor = 40;
+@@ -72,7 +81,11 @@ dbm_open(file, flags, mode)
+ 	info.lorder = 0;
+ 	(void)strcpy(path, file);
+ 	(void)strcat(path, DBM_SUFFIX);
+-	return ((DBM *)__hash_open(path, flags, mode, &info, 0));
++	db = (DBM *)__hash_open(path, flags, mode, &info, 0);
++#ifndef	__GNUC__
++	free(path);
++#endif
++	return db;
+ }
+ 
+ extern void
+@@ -180,7 +193,7 @@ dbm_error(db)
+ 	HTAB *hp;
+ 
+ 	hp = (HTAB *)db->internal;
+-	return (hp->errno);
++	return (hp->errnum);
+ }
+ 
+ extern int
+@@ -190,7 +203,7 @@ dbm_clearerr(db)
+ 	HTAB *hp;
+ 
+ 	hp = (HTAB *)db->internal;
+-	hp->errno = 0;
++	hp->errnum = 0;
+ 	return (0);
+ }
+ 
+diff --git a/include/db.h b/include/db.h
+index 13c7495..8b7921f 100644
+--- a/include/db.h
++++ b/include/db.h
 @@ -33,8 +33,8 @@
   *	@(#)db.h	8.7 (Berkeley) 6/16/94
   */
@@ -1614,7 +1479,7 @@ things like hunks that only change whitespace
  
  #include <sys/types.h>
  #include <sys/cdefs.h>
-@@ -117,14 +117,14 @@ typedef enum { DB_BTREE, DB_HASH, DB_REC
+@@ -117,14 +117,14 @@ typedef enum { DB_BTREE, DB_HASH, DB_RECNO } DBTYPE;
  /* Access method description structure. */
  typedef struct __db {
  	DBTYPE type;			/* Underlying db type. */
@@ -1665,10 +1530,201 @@ things like hunks that only change whitespace
  DB *dbopen __P((const char *, int, int, DBTYPE, const void *));
  
  #ifdef __DBINTERFACE_PRIVATE
-@@ -233,4 +234,5 @@ DB	*__rec_open __P((const char *, int, i
+@@ -233,4 +234,5 @@ DB	*__rec_open __P((const char *, int, int, const RECNOINFO *, int));
  void	 __dbpanic __P((DB *dbp));
  #endif
  __END_DECLS
 -#endif /* !_DB_H_ */
 +
 +#endif /* db.h */
+diff --git a/include/mpool.h b/include/mpool.h
+index 40d1022..22c9fea 100644
+--- a/include/mpool.h
++++ b/include/mpool.h
+@@ -33,6 +33,9 @@
+  *	@(#)mpool.h	8.2 (Berkeley) 7/14/94
+  */
+ 
++#ifndef _MPOOL_H
++#define _MPOOL_H 1
++
+ #include <sys/queue.h>
+ 
+ /*
+@@ -67,9 +70,9 @@ typedef struct MPOOL {
+ 	u_long	pagesize;		/* file page size */
+ 	int	fd;			/* file descriptor */
+ 					/* page in conversion routine */
+-	void    (*pgin) __P((void *, pgno_t, void *));
++	void    (*pgin) __PMT((void *, pgno_t, void *));
+ 					/* page out conversion routine */
+-	void    (*pgout) __P((void *, pgno_t, void *));
++	void    (*pgout) __PMT((void *, pgno_t, void *));
+ 	void	*pgcookie;		/* cookie for page in/out routines */
+ #ifdef STATISTICS
+ 	u_long	cachehit;
+@@ -85,15 +88,25 @@ typedef struct MPOOL {
+ } MPOOL;
+ 
+ __BEGIN_DECLS
++MPOOL	*__mpool_open __P((void *, int, pgno_t, pgno_t));
+ MPOOL	*mpool_open __P((void *, int, pgno_t, pgno_t));
++void	 __mpool_filter __P((MPOOL *, void (*)(void *, pgno_t, void *),
++	    void (*)(void *, pgno_t, void *), void *));
+ void	 mpool_filter __P((MPOOL *, void (*)(void *, pgno_t, void *),
+ 	    void (*)(void *, pgno_t, void *), void *));
++void	*__mpool_new __P((MPOOL *, pgno_t *));
+ void	*mpool_new __P((MPOOL *, pgno_t *));
++void	*__mpool_get __P((MPOOL *, pgno_t, u_int));
+ void	*mpool_get __P((MPOOL *, pgno_t, u_int));
++int	 __mpool_put __P((MPOOL *, void *, u_int));
+ int	 mpool_put __P((MPOOL *, void *, u_int));
++int	 __mpool_sync __P((MPOOL *));
+ int	 mpool_sync __P((MPOOL *));
++int	 __mpool_close __P((MPOOL *));
+ int	 mpool_close __P((MPOOL *));
+ #ifdef STATISTICS
+ void	 mpool_stat __P((MPOOL *));
+ #endif
+ __END_DECLS
++
++#endif /* mpool.h */
+diff --git a/mpool/mpool.c b/mpool/mpool.c
+index a61041e..298f716 100644
+--- a/mpool/mpool.c
++++ b/mpool/mpool.c
+@@ -50,6 +50,14 @@ static char sccsid[] = "@(#)mpool.c	8.5 (Berkeley) 7/26/94";
+ #define	__MPOOLINTERFACE_PRIVATE
+ #include <mpool.h>
+ 
++#define mpool_open __mpool_open
++#define mpool_filter __mpool_filter
++#define mpool_new __mpool_new
++#define mpool_get __mpool_get
++#define mpool_put __mpool_put
++#define mpool_sync __mpool_sync
++#define mpool_close __mpool_close
++
+ static BKT *mpool_bkt __P((MPOOL *));
+ static BKT *mpool_look __P((MPOOL *, pgno_t));
+ static int  mpool_write __P((MPOOL *, BKT *));
+@@ -205,7 +213,8 @@ mpool_get(mp, pgno, flags)
+ 	off = mp->pagesize * pgno;
+ 	if (lseek(mp->fd, off, SEEK_SET) != off)
+ 		return (NULL);
+-	if ((nr = read(mp->fd, bp->page, mp->pagesize)) != mp->pagesize) {
++	if ((u_long) (nr = read(mp->fd, bp->page, mp->pagesize))
++	    != mp->pagesize) {
+ 		if (nr >= 0)
+ 			errno = EFTYPE;
+ 		return (NULL);
+@@ -300,6 +309,23 @@ mpool_sync(mp)
+ 	return (fsync(mp->fd) ? RET_ERROR : RET_SUCCESS);
+ }
+ 
++#undef mpool_open
++#undef mpool_filter
++#undef mpool_new
++#undef mpool_get
++#undef mpool_put
++#undef mpool_close
++#undef mpool_sync
++#define weak_alias(original, alias) \
++	asm (".weak " #alias "\n" #alias " = " #original);
++weak_alias (__mpool_open, mpool_open)
++weak_alias (__mpool_filter, mpool_filter)
++weak_alias (__mpool_new, mpool_new)
++weak_alias (__mpool_get, mpool_get)
++weak_alias (__mpool_put, mpool_put)
++weak_alias (__mpool_close, mpool_close)
++weak_alias (__mpool_sync, mpool_sync)
++
+ /*
+  * mpool_bkt
+  *	Get a page from the cache (or create one).
+@@ -380,7 +406,7 @@ mpool_write(mp, bp)
+ 	off = mp->pagesize * bp->pgno;
+ 	if (lseek(mp->fd, off, SEEK_SET) != off)
+ 		return (RET_ERROR);
+-	if (write(mp->fd, bp->page, mp->pagesize) != mp->pagesize)
++	if ((u_long) write(mp->fd, bp->page, mp->pagesize) != mp->pagesize)
+ 		return (RET_ERROR);
+ 
+ 	bp->flags &= ~MPOOL_DIRTY;
+diff --git a/recno/rec_close.c b/recno/rec_close.c
+index 16fb0b4..8a3c4d7 100644
+--- a/recno/rec_close.c
++++ b/recno/rec_close.c
+@@ -79,13 +79,14 @@ __rec_close(dbp)
+ 	if (F_ISSET(t, R_MEMMAPPED) && munmap(t->bt_smap, t->bt_msize))
+ 		status = RET_ERROR;
+ 
+-	if (!F_ISSET(t, R_INMEM))
++	if (!F_ISSET(t, R_INMEM)) {
+ 		if (F_ISSET(t, R_CLOSEFP)) {
+ 			if (fclose(t->bt_rfp))
+ 				status = RET_ERROR;
+ 		} else
+ 			if (close(t->bt_rfd))
+ 				status = RET_ERROR;
++	}
+ 
+ 	if (__bt_close(dbp) == RET_ERROR)
+ 		status = RET_ERROR;
+@@ -150,7 +151,7 @@ __rec_sync(dbp, flags)
+ 		 */
+ 		status = (dbp->seq)(dbp, &key, &data, R_FIRST);
+ 		while (status == RET_SUCCESS) {
+-			if (write(t->bt_rfd, data.data, data.size) != data.size)
++			if ((size_t) write(t->bt_rfd, data.data, data.size) != data.size)
+ 				return (RET_ERROR);
+ 			status = (dbp->seq)(dbp, &key, &data, R_NEXT);
+ 		}
+@@ -162,7 +163,7 @@ __rec_sync(dbp, flags)
+ 		while (status == RET_SUCCESS) {
+ 			iov[0].iov_base = data.data;
+ 			iov[0].iov_len = data.size;
+-			if (writev(t->bt_rfd, iov, 2) != data.size + 1)
++			if ((size_t) writev(t->bt_rfd, iov, 2) != data.size + 1)
+ 				return (RET_ERROR);
+ 			status = (dbp->seq)(dbp, &key, &data, R_NEXT);
+ 		}
+diff --git a/recno/rec_put.c b/recno/rec_put.c
+index 1afae0d..6242b85 100644
+--- a/recno/rec_put.c
++++ b/recno/rec_put.c
+@@ -256,7 +256,7 @@ __rec_iput(t, nrec, data, flags)
+ 	 * the offset array, shift the pointers up.
+ 	 */
+ 	nbytes = NRLEAFDBT(data->size);
+-	if (h->upper - h->lower < nbytes + sizeof(indx_t)) {
++	if ((u_int32_t) (h->upper - h->lower) < nbytes + sizeof(indx_t)) {
+ 		status = __bt_split(t, h, NULL, data, dflags, nbytes, index);
+ 		if (status == RET_SUCCESS)
+ 			++t->bt_nrecs;
+diff --git a/recno/rec_seq.c b/recno/rec_seq.c
+index f80992c..2f8c769 100644
+--- a/recno/rec_seq.c
++++ b/recno/rec_seq.c
+@@ -31,7 +31,7 @@
+  * SUCH DAMAGE.
+  */
+ 
+-#ifndef lint
++#if defined(LIBC_SCCS) && !defined(lint)
+ static char sccsid[] = "@(#)rec_seq.c	8.3 (Berkeley) 7/14/94";
+ #endif /* not lint */
+ 
+diff --git a/recno/rec_utils.c b/recno/rec_utils.c
+index baea3fa..c4c0380 100644
+--- a/recno/rec_utils.c
++++ b/recno/rec_utils.c
+@@ -90,7 +90,7 @@ dataonly:
+ 		return (RET_SUCCESS);
+ 
+ 	/*
+-	 * We must copy big keys/data to make them contigous.  Otherwise,
++	 * We must copy big keys/data to make them contiguous.  Otherwise,
+ 	 * leave the page pinned and don't copy unless the user specified
+ 	 * concurrent access.
+ 	 */
