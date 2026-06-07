@@ -14,7 +14,7 @@ then
 	KEYWORDS=""
 else
 	SRC_URI="https://github.com/frno7/${PN}/archive/v${PV}.tar.gz -> ${P}.tar.gz"
-	KEYWORDS="amd64 ppc64"
+	KEYWORDS="amd64 arm64 ppc64"
 fi
 
 LICENSE="GPL-2 MIT"
@@ -39,7 +39,7 @@ src_compile() {
 	if use tools
 	then
 		emake CC="$(tc-getCC)" AR="$(tc-getAR)" \
-			LDFLAGS="${LDFLAGS}" V=1 tool || die
+			LDFLAGS="${LDFLAGS}" V=1 tool
 	fi
 
 	if use modules
@@ -48,7 +48,7 @@ src_compile() {
 			TARGET_CC="$(tc-getCC)" TARGET_LD="$(tc-getLD)" \
 			TARGET_OBJCOPY="$(tc-getOBJCOPY)" \
 			CFLAGS="-Wall -Iinclude" \
-			LDFLAGS="${LDFLAGS}" V=1 module || die
+			LDFLAGS="${LDFLAGS}" V=1 module
 	fi
 }
 
