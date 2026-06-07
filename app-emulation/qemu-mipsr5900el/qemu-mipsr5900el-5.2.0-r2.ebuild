@@ -6,7 +6,7 @@ SRC_URI="https://download.qemu.org/qemu-${PV}.tar.xz"
 
 LICENSE="GPL-2 LGPL-2 BSD-2"
 SLOT="0"
-KEYWORDS="amd64 ppc64"
+KEYWORDS="amd64 arm64 ppc64"
 IUSE="static-user"
 
 ALL_DEPEND="
