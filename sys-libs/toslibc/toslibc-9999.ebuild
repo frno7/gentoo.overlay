@@ -12,11 +12,8 @@ then
 	SRC_URI=""
 	KEYWORDS=""
 else
-	EGIT_REPO_URI="https://github.com/frno7/${PN}.git"
-	EGIT_COMMIT="v${PV}"
-	inherit git-r3
-	SRC_URI=""
-	KEYWORDS="amd64 ppc64"
+	SRC_URI="https://github.com/frno7/${PN}/archive/v${PV}.tar.gz -> ${P}.tar.gz"
+	KEYWORDS="amd64 arm64 ppc64"
 fi
 
 LICENSE="LGPL-2"
@@ -24,25 +21,27 @@ SLOT="0"
 IUSE="example test"
 
 RDEPEND=""
-DEPEND="cross-m68k-elf/gcc"
+DEPEND="
+	cross-m68k-elf/gcc
+"
 BDEPEND=""
 RESTRICT="strip"
 
 pkg_setup() {
-	MAKEOPTS+=" prefix=/usr/m68k-atari-tos-gnu V=1 "
+	MAKEOPTS+=" prefix=/usr/m68k-atari-tos-gnu "
 	MAKEOPTS+=" TARGET_COMPILE=m68k-elf- "
-	MAKEOPTS+=" DESTDIR=${D} "
+	MAKEOPTS+=" DESTDIR=${D} V=1 "
 }
 
 src_compile() {
-	emake lib || die
+	emake lib
 
 	use example && emake example
 	use test    && emake test
 }
 
 src_install() {
-	emake install-lib || die
+	emake install-lib
 
 	use example && emake install-example
 	use test    && emake install-test
