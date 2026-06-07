@@ -12,11 +12,9 @@ then
 	SRC_URI=""
 	KEYWORDS=""
 else
-	EGIT_REPO_URI="https://github.com/frno7/toslibc.git"
-	EGIT_COMMIT="v${PV}"
-	inherit git-r3
-	SRC_URI=""
-	KEYWORDS="amd64 ppc64"
+	SRC_URI="https://github.com/frno7/toslibc/archive/v${PV}.tar.gz -> ${P}.tar.gz"
+	S="${WORKDIR}/toslibc-${PV}"
+	KEYWORDS="amd64 arm64 ppc64"
 fi
 
 LICENSE="GPL-2"
@@ -31,17 +29,17 @@ DEPEND="
 BDEPEND=""
 
 pkg_setup() {
-	MAKEOPTS+=" prefix=/usr/m68k-atari-tos-gnu V=1 "
+	MAKEOPTS+=" prefix=/usr/m68k-atari-tos-gnu "
 	MAKEOPTS+=" TARGET_COMPILE=m68k-elf- "
-	MAKEOPTS+=" DESTDIR=${D} "
+	MAKEOPTS+=" DESTDIR=${D} V=1 "
 }
 
 src_compile() {
-	emake compiler || die
+	emake compiler
 }
 
 src_install() {
-	emake install-compiler || die
+	emake install-compiler
 
 	for f in "${D}"/usr/m68k-atari-tos-gnu/bin/*
 	do
